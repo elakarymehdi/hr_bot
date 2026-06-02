@@ -199,6 +199,15 @@ async def get_profiles(current_user: CurrentUser = Depends(_get_current_user)) -
     return {"profiles": response.data or []}
 
 
+@app.delete("/api/profiles")
+async def delete_profiles(current_user: CurrentUser = Depends(_get_current_user)) -> dict:
+    _require_admin(current_user)
+    client = get_supabase_client(current_user.token)
+    client.table("scraped_profiles").delete().eq("user_id", current_user.user_id).execute()
+    logger.info("Cleared all scraped profiles for user %s", current_user.user_id)
+    return {"status": "ok"}
+
+
 @app.get("/api/me")
 async def get_me(current_user: CurrentUser = Depends(_get_current_user)) -> dict:
     return {

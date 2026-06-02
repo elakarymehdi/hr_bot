@@ -345,26 +345,45 @@ async def _login_and_search(
         logger.warning("No profiles found on search results page")
         return []
 
-    # Build profiles from card data (no enrichment — LinkedIn rate-limits
-    # profile page navigation, and card data is sufficient for matching).
+    # Build profiles from card data with natural-sounding raw_text
+    # for better sentence-transformer matching.
     profiles = []
     for card in card_data[:max_results]:
-        raw_parts = [
-            card["name"],
-            card["title"],
-            card["company"],
-            card["location"],
-        ]
+        name = card["name"]
+        title = card["title"]
+        company = card["company"]
+        location = card["location"]
+
+        # Build a single coherent sentence for the sentence transformer.
+        # Natural language works much better than bare keywords for semantic similarity.
+        if name and title:
+            raw_text = f"{name} is a {title}"
+            if company:
+                raw_text += f" at {company}"
+        elif name:
+            raw_text = f"{name} works as a professional"
+            if company:
+                raw_text += f" at {company}"
+        else:
+            raw_text = title or "A professional"
+            if company and title:
+                raw_text += f" at {company}"
+            elif company and not title:
+                raw_text = company
+        if location:
+            raw_text += f", based in {location}"
+        raw_text += "."
+
         profiles.append({
-            "name": card["name"],
-            "title": card["title"],
-            "company": card["company"],
-            "location": card["location"],
+            "name": name,
+            "title": title,
+            "company": company,
+            "location": location,
             "profile_url": card["url"],
             "summary": "",
             "skills": [],
             "experience": [],
-            "raw_text": " ".join(p for p in raw_parts if p).strip(),
+            "raw_text": raw_text,
         })
 
     logger.info("Returning %d profiles (card data only)", len(profiles))
