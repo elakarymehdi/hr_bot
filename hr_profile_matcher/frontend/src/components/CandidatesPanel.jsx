@@ -99,7 +99,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
   // Reset sort mode when switching between matched/scraped views
   useEffect(() => {
     if (showScraped && sortMode === "match") {
-      setSortMode("name");
+      setSortMode("date");
     }
   }, [showScraped, sortMode]);
 
@@ -147,6 +147,15 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
       list.sort((a, b) => dir * (a.name || "").localeCompare(b.name || ""));
     } else if (sortMode === "location") {
       list.sort((a, b) => dir * (a.location || "").localeCompare(b.location || ""));
+    } else if (sortMode === "date") {
+      list.sort((a, b) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        const dateDiff = da - db;
+        if (dateDiff !== 0) return dir * dateDiff;
+        // Tiebreaker: sort by name when dates are equal
+        return dir * (a.name || "").localeCompare(b.name || "");
+      });
     }
     return list;
   }, [scrapedProfiles, sortMode, sortDirection, searchFilter]);
@@ -215,6 +224,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
           >
             {showScraped ? (
               <>
+                <option value="date">Date</option>
                 <option value="name">Name</option>
                 <option value="location">Location</option>
               </>

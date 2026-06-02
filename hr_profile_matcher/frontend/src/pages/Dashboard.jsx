@@ -276,7 +276,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-white">
       {/* ── Background accents ── */}
       <div className="pointer-events-none fixed inset-0">
         <div className="absolute -left-48 -top-48 h-[600px] w-[600px] rounded-full bg-indigo-500/5 blur-[150px]" />
@@ -284,7 +284,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Header ── */}
-      <header className="sticky top-0 z-30 border-b border-slate-800/50 bg-slate-950/90 backdrop-blur-2xl">
+      <header className="shrink-0 sticky top-0 z-30 border-b border-slate-800/50 bg-slate-950/90 backdrop-blur-2xl">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
@@ -312,9 +312,9 @@ export default function Dashboard() {
       </header>
 
       {/* ── Main content ── */}
-      <div className="px-6 py-6">
+      <div className="flex flex-1 flex-col overflow-hidden px-6 py-6">
         {/* ── Stats bar ── */}
-        <div className="mb-6 grid grid-cols-3 gap-3">
+        <div className="mb-6 grid shrink-0 grid-cols-3 gap-3">
           {stats.map((stat, i) => (
             <div
               key={stat.label}
@@ -331,8 +331,8 @@ export default function Dashboard() {
         </div>
 
         {/* ── Grid layout ── */}
-        <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-          <div className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
+        <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[380px_1fr]">
+          <div className="animate-fade-in-up overflow-y-auto min-h-0" style={{ animationDelay: "150ms" }}>
             <CriteriaPanel
               naturalLanguage={naturalLanguage}
               onNaturalLanguageChange={setNaturalLanguage}
@@ -348,10 +348,10 @@ export default function Dashboard() {
             />
           </div>
 
-          <div className="space-y-3 animate-fade-in-up" style={{ animationDelay: "250ms" }}>
+          <div className="flex min-h-0 flex-col overflow-hidden animate-fade-in-up" style={{ animationDelay: "250ms" }}>
             {/* View toggle */}
             {scrapedProfiles.length > 0 && (
-              <div className="glass-card flex items-center gap-1 self-start rounded-xl p-1">
+              <div className="glass-card mb-3 flex shrink-0 items-center gap-1 self-start rounded-xl p-1">
                 <button
                   type="button"
                   onClick={() => setViewMode("matched")}
@@ -383,15 +383,17 @@ export default function Dashboard() {
               </div>
             )}
 
-            <CandidatesPanel
-              results={results}
-              scrapedProfiles={viewMode === "scraped" ? scrapedProfiles : []}
-              loading={matching}
-              error={error}
-              showScraped={viewMode === "scraped"}
-              onRefresh={fetchScrapedProfiles}
-              onClear={() => setShowClearModal(true)}
-            />
+            <div className="flex-1 overflow-y-auto min-h-0 rounded-2xl">
+              <CandidatesPanel
+                results={results}
+                scrapedProfiles={viewMode === "scraped" ? scrapedProfiles : []}
+                loading={matching}
+                error={error}
+                showScraped={viewMode === "scraped"}
+                onRefresh={fetchScrapedProfiles}
+                onClear={() => setShowClearModal(true)}
+              />
+            </div>
           </div>
         </div>
       </div>
