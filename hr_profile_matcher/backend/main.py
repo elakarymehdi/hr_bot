@@ -18,7 +18,7 @@ from profile_scraper import scrape_profiles as scrape_profiles_legacy
 from scraper_lib_adapter import scrape_profiles_lib
 from supabase_client import get_or_create_profile, get_supabase_client, get_user_from_jwt
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("hr_profile_matcher")

@@ -6,8 +6,6 @@ import time
 from typing import List
 from urllib.parse import quote_plus
 
-from pathlib import Path
-
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -20,7 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.core.os_manager import ChromeType
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent / ".env")
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

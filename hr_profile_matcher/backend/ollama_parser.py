@@ -1,14 +1,28 @@
 import json
 import logging
+import os
 from typing import Any, Dict
 
 import requests
 
 logger = logging.getLogger(__name__)
 
+# --- Configuration ---
 OLLAMA_URL = "http://localhost:11434/api/generate"
 OLLAMA_MODEL = "phi3"
 
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+
+def _is_local() -> bool:
+    """Return True if LOCAL_LLM env var is explicitly 'true' (Ollama mode)."""
+    return os.environ.get("LOCAL_LLM", "").strip().lower() == "true"
+
+
+# ---------------------------------------------------------------------------
+# Low-level LLM callers
+# ---------------------------------------------------------------------------
 
 def _call_ollama(prompt: str) -> str:
     payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
@@ -18,11 +32,63 @@ def _call_ollama(prompt: str) -> str:
     return (data.get("response", "") or "").strip()
 
 
+def _call_groq(prompt: str) -> str:
+    """Call Groq chat-completions API.
+
+    Raises ValueError if GROQ_API_KEY is not set.
+    Raises requests.RequestException on network / HTTP errors.
+    """
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is not set — cannot call Groq API")
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 512,
+    }
+    response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
+
+
+def _call_llm(prompt: str) -> str:
+    """Call the primary LLM provider, falling back to the other on failure.
+
+    Primary:  Groq API (unless LOCAL_LLM=true).
+    Fallback: Ollama (if Groq unavailable) or Groq (if Ollama fails).
+    """
+    if _is_local():
+        try:
+            return _call_ollama(prompt)
+        except Exception as exc:
+            logger.warning("Ollama call failed: %s — falling back to Groq", exc)
+            return _call_groq(prompt)
+    else:
+        try:
+            return _call_groq(prompt)
+        except Exception as exc:
+            logger.warning("Groq call failed: %s — falling back to Ollama", exc)
+            return _call_ollama(prompt)
+
+
+# ---------------------------------------------------------------------------
+# JSON cleaning helper
+# ---------------------------------------------------------------------------
+
 def _clean_json_response(raw: str) -> str:
-    """Strip markdown code fences, leading/trailing whitespace, and garbage from model output."""
+    """Strip markdown code fences, leading/trailing garbage from model output."""
+    if not raw:
+        return ""
+
     # Remove markdown code blocks: ```json ... ``` or just ``` ... ```
     if "```" in raw:
-        # Extract content between the outermost triple backticks
         parts = raw.split("```")
         for part in parts:
             part = part.strip()
@@ -32,15 +98,15 @@ def _clean_json_response(raw: str) -> str:
             elif part.lower().startswith("json"):
                 raw = part[4:].strip()
                 break
-    # Strip any non-JSON prefix (model sometimes prefaces with "Here's the JSON:" etc.)
-    # Find the first '{' or '[' and slice from there
+
+    # Strip any non-JSON prefix — find first '{' or '['
     for start_char in ("{", "["):
         idx = raw.find(start_char)
         if idx >= 0:
             raw = raw[idx:]
             break
+
     # Remove trailing text after the last matching bracket
-    # Find the last '}' or ']' and slice there
     if raw.startswith("{"):
         end_idx = raw.rfind("}")
         if end_idx >= 0:
@@ -49,28 +115,38 @@ def _clean_json_response(raw: str) -> str:
         end_idx = raw.rfind("]")
         if end_idx >= 0:
             raw = raw[: end_idx + 1]
+
     return raw.strip()
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def parse_nl_to_form(text: str) -> Dict[str, Any]:
+    """Parse natural-language job criteria into a structured form dict.
+
+    Uses Groq API by default; falls back to Ollama if Groq is unavailable
+    or LOCAL_LLM=true is set.
+    """
     prompt = (
-        "Extract structured job criteria from this text.\n\n"
+        "Extract structured job criteria from the text below.\n\n"
         "Return ONLY raw JSON with these exact keys (no markdown, no code fences, no explanation):\n"
         '- "job_title": string\n'
         '- "required_skills": array of strings\n'
         '- "years_experience": number (0 if not mentioned)\n'
         '- "location": string ("" if not mentioned)\n'
         '- "contract_type": one of "CDI", "CDD", "Freelance", "Stage", "Any"\n\n'
-        "Text: "
-        f"{text}\n\n"
+        f"Text: {text}\n\n"
         "JSON:"
     )
+
     raw = ""
     try:
-        raw = _call_ollama(prompt)
+        raw = _call_llm(prompt)
         cleaned = _clean_json_response(raw)
         if not cleaned:
-            logger.warning("Ollama returned empty response")
+            logger.warning("LLM returned empty response")
             raise ValueError("Empty response")
         parsed = json.loads(cleaned)
         return {
@@ -81,7 +157,7 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
             "contract_type": parsed.get("contract_type", "Any"),
         }
     except (json.JSONDecodeError, requests.RequestException, ValueError) as exc:
-        logger.warning("Ollama parse failed: %s — raw: '%s'", exc, raw)
+        logger.warning("LLM parse failed: %s — raw: '%s'", exc, raw)
         return {
             "job_title": "",
             "required_skills": [],
@@ -92,6 +168,11 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
 
 
 def structure_search_query(criteria: Dict[str, Any]) -> str:
+    """Generate a LinkedIn people-search keyword query from structured criteria.
+
+    Uses Groq API by default; falls back to Ollama if Groq is unavailable
+    or LOCAL_LLM=true is set.
+    """
     # Build a clean, structured input — avoid dumping the raw dict (which may
     # contain a long raw_description paragraph that distracts the model).
     context_parts = []
@@ -114,32 +195,35 @@ def structure_search_query(criteria: Dict[str, Any]) -> str:
         "- Keywords only — no full sentences, no filler words (e.g. 'experience in', 'available now', 'looking for', 'with').\n"
         "- NEVER include the word 'LinkedIn' — the search is already on LinkedIn.\n"
         "- Keep it short and specific (5-10 words max).\n"
-        "- Put multi-word job titles in double quotes (e.g. \"Software Engineer\", \"Data Scientist\").\n"
+        "- NO quotes, NO punctuation, NO special characters — plain space-separated keywords only.\n"
+        "- Multi-word job titles should just be written as separate keywords (e.g. Software Engineer, not \"Software Engineer\").\n"
         "- Prioritize: job title, core skills, location.\n"
         "- Skip years of experience and contract type — LinkedIn doesn't search them well.\n"
         "\n"
         "EXAMPLES:\n"
-        "- \"Software Engineer\" Python FastAPI Casablanca\n"
-        "- \"DevOps Engineer\" Docker Kubernetes AWS\n"
-        "- \"Data Analyst\" SQL Tableau PowerBI\n"
-        "- \"Full Stack Developer\" React Node.js TypeScript\n"
+        '- Software Engineer Python FastAPI Casablanca\n'
+        '- DevOps Engineer Docker Kubernetes AWS\n'
+        '- Data Analyst SQL Tableau PowerBI\n'
+        '- Full Stack Developer React Node TypeScript\n'
         "\n"
         f"INPUT:\n{structured_input}\n\n"
         "QUERY:"
     )
+
+    raw = ""
     try:
-        result = _call_ollama(prompt).strip()
-        # Remove surrounding quotes (regular and smart quotes) if they wrap the entire string.
-        # This preserves quotes used for quoted terms inside the query
-        # (e.g., "Software Engineer" Python stays intact).
-        smart_quotes = [("\u201c", "\u201d"), ("\u201e", "\u201c"), ("\u00ab", "\u00bb")]
-        for pair in smart_quotes:
-            if result.startswith(pair[0]) and result.endswith(pair[1]):
-                result = result[len(pair[0]):-len(pair[1])].strip()
-                break
-        if result.startswith('"') and result.endswith('"') and result.count('"') == 2:
-            result = result[1:-1]
+        raw = _call_llm(prompt)
+        result = raw.strip()
+
+        # Aggressively strip all quotes (regular + smart) and common punctuation
+        # from the result — the model sometimes ignores the NO quotes rule.
+        for ch in ('"', "\u201c", "\u201d", "\u201e", "\u00ab", "\u00bb", "'", "`", ",", ".", ";", ":", "!", "?"):
+            result = result.replace(ch, "")
+
+        # Collapse multiple spaces into one
+        result = " ".join(result.split())
+
         return result
-    except requests.RequestException as exc:
-        logger.error("Ollama query structuring failed: %s", exc)
+    except (requests.RequestException, ValueError) as exc:
+        logger.error("LLM query structuring failed: %s — raw: '%s'", exc, raw)
         raise

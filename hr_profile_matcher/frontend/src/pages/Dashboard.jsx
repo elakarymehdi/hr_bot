@@ -5,7 +5,7 @@ import CandidatesPanel from "../components/CandidatesPanel.jsx";
 import ConfirmQueryModal from "../components/ConfirmQueryModal.jsx";
 import CriteriaPanel from "../components/CriteriaPanel.jsx";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 const emptyCriteria = {
   job_title: "",
@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [profilesFound, setProfilesFound] = useState(null);
   const [searchMode, setSearchMode] = useState("both");
   const [maxResults, setMaxResults] = useState(20);
+  const [scrapedProfiles, setScrapedProfiles] = useState([]);
+  const [viewMode, setViewMode] = useState("matched"); // "matched" | "scraped"
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -81,6 +83,7 @@ export default function Dashboard() {
     if (searchMode === "database") {
       setError("");
       await runMatch();
+      setViewMode("matched");
       return;
     }
 
@@ -153,15 +156,31 @@ export default function Dashboard() {
     }
   };
 
+  const fetchScrapedProfiles = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/profiles`, { headers: authHeaders });
+      if (response.ok) {
+        const data = await response.json();
+        setScrapedProfiles(data.profiles || []);
+      }
+    } catch {
+      // silently fail
+    }
+  };
+
   const handleConfirm = async (query) => {
     setError("");
     try {
       if (modalMode === "scrape") {
         await runScrape(query);
+        await fetchScrapedProfiles();
+        setViewMode("scraped");
       } else {
         // "both" mode: scrape then match
         await runScrape(query);
+        await fetchScrapedProfiles();
         await runMatch();
+        setViewMode("matched");
       }
       setModalOpen(false);
     } catch (err) {
@@ -203,11 +222,42 @@ export default function Dashboard() {
           loadingQuery={loadingQuery}
           isAdmin={role === "admin"}
         />
-        <CandidatesPanel
-          results={results}
-          loading={matching}
-          error={error}
-        />
+        <div className="space-y-3">
+          {scrapedProfiles.length > 0 && (
+            <div className="flex items-center gap-1 rounded-lg bg-slate-800 p-1 self-start">
+              <button
+                type="button"
+                onClick={() => setViewMode("matched")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  viewMode === "matched"
+                    ? "bg-indigo-500 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white"
+                }`}
+              >
+                Match Results ({results.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("scraped")}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  viewMode === "scraped"
+                    ? "bg-indigo-500 text-white shadow-sm"
+                    : "text-slate-300 hover:text-white"
+                }`}
+              >
+                All Profiles ({scrapedProfiles.length})
+              </button>
+            </div>
+          )}
+          <CandidatesPanel
+            results={results}
+            scrapedProfiles={viewMode === "scraped" ? scrapedProfiles : []}
+            loading={matching}
+            error={error}
+            showScraped={viewMode === "scraped"}
+            onRefresh={fetchScrapedProfiles}
+          />
+        </div>
       </main>
 
       <ConfirmQueryModal

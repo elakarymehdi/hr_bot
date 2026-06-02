@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.git/
+.gitignore
+README.md
+credentials/linkedin_session.json

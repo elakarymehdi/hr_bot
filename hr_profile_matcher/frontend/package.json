@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"../.venv/bin/uvicorn main:app --reload --port 8000 --app-dir ..\" \"vite\"",
+    "dev": "vite",
     "start": "npm run dev",
     "build": "vite build",
     "preview": "vite preview"

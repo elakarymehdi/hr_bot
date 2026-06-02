@@ -1,25 +1,116 @@
 # HR Profile Matcher
 
-HR Profile Matcher is a full-stack HR SaaS platform where users authenticate, define job criteria (form or natural language), generate a structured LinkedIn search query, scrape real profiles, and match candidates using NLP embeddings. Each user’s scraped profiles are private in Supabase.
+HR Profile Matcher is a full-stack HR SaaS platform where users authenticate, define job criteria (form or natural language), generate a structured LinkedIn search query, scrape real profiles, and match candidates using NLP embeddings. Each user's scraped profiles are private in Supabase.
+
+## Project Structure
+
+```
+hr_profile_matcher/
+├── backend/              # FastAPI Python backend
+│   ├── main.py           # API server
+│   ├── matcher.py        # NLP candidate matching
+│   ├── ollama_parser.py  # NL parsing + query generation (Groq/Ollama)
+│   ├── supabase_client.py
+│   ├── profile_scraper.py   # Legacy Selenium scraper
+│   ├── scraper_lib_adapter.py  # Playwright-based scraper
+│   ├── cli.py            # CLI entry point
+│   ├── scraper_lib/      # LinkedIn scraper library (pip-installable)
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .dockerignore
+├── frontend/             # React + Vite + Tailwind CSS
+│   ├── src/
+│   ├── public/
+│   ├── Dockerfile
+│   ├── nginx.conf        # Production nginx config
+│   └── package.json
+├── docker-compose.yml    # Orchestrates backend + frontend
+├── .env.example
+├── mock_profiles.json    # Fallback data when DB is empty
+├── .gitignore
+└── README.md
+```
 
 ## Stack
-- **Backend:** FastAPI (Python)
-- **Scraping:** Selenium + BeautifulSoup
-- **NLP Matching:** SentenceTransformers `all-MiniLM-L6-v2` + cosine similarity
-- **NL Parsing / Query Structuring:** Ollama `phi3`
-- **Auth + DB:** Supabase (Auth + PostgreSQL)
-- **Frontend:** React + Tailwind CSS
 
-## Prerequisites
+- **Backend:** FastAPI (Python)
+- **Scraping:** Playwright (primary) + Selenium/BeautifulSoup (legacy)
+- **NLP Matching:** SentenceTransformers `all-MiniLM-L6-v2` + cosine similarity
+- **NL Parsing / Query Structuring:** Groq API (default) or Ollama `phi3` (local)
+- **Auth + DB:** Supabase (Auth + PostgreSQL)
+- **Frontend:** React + Tailwind CSS (Vite build)
+
+## Quick Start with Docker
+
+### Prerequisites
+- Docker & Docker Compose
+
+### Setup
+
+1. **Clone and create `.env`:**
+   ```bash
+   cp .env.example .env
+   ```
+   Fill in your Supabase credentials, LinkedIn credentials, and Groq API key.
+
+2. **Build and start:**
+   ```bash
+   docker compose up --build -d
+   ```
+
+3. **Open the app:** http://localhost
+
+### Services
+
+| Service  | Port | Description                      |
+|----------|------|----------------------------------|
+| Frontend | 80   | React SPA (nginx)                |
+| Backend  | 8000 | FastAPI + scraping + matching    |
+
+The frontend nginx server proxies `/api/` requests to the backend automatically.
+
+## Development Without Docker
+
+### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- Google Chrome installed
-- Ollama running locally
+- Playwright Chromium (`playwright install chromium`)
+- Ollama running locally (optional, for LOCAL_LLM=true)
+
+### Install Dependencies
+
+```bash
+# Backend
+cd backend
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e scraper_lib/
+.venv/bin/pip install playwright
+.venv/bin/playwright install chromium
+.venv/bin/playwright install-deps chromium
+
+# Frontend
+cd frontend
+npm install
+```
+
+### Run
+
+```bash
+# Terminal 1: Backend
+cd backend
+.venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: Frontend (Vite dev server with API proxy)
+cd frontend
+npm run dev
+```
+
+Vite dev server runs at http://localhost:5173 and proxies `/api/` to the backend.
 
 ## Supabase Setup
 
-### Tables + RLS
-Run the SQL below in Supabase SQL editor:
+Run this SQL in Supabase SQL editor:
 
 ```sql
 create table if not exists profiles (
@@ -28,20 +119,11 @@ create table if not exists profiles (
   role text default 'viewer',
   created_at timestamp default now()
 );
-
 alter table profiles enable row level security;
 
-create policy "Profiles read own"
-on profiles for select
-using (id = auth.uid());
-
-create policy "Profiles insert own"
-on profiles for insert
-with check (id = auth.uid());
-
-create policy "Profiles update own"
-on profiles for update
-using (id = auth.uid());
+create policy "Profiles read own" on profiles for select using (id = auth.uid());
+create policy "Profiles insert own" on profiles for insert with check (id = auth.uid());
+create policy "Profiles update own" on profiles for update using (id = auth.uid());
 
 create table if not exists scraped_profiles (
   id text primary key,
@@ -57,70 +139,28 @@ create table if not exists scraped_profiles (
   raw_text text,
   scraped_at timestamp default now()
 );
-
 alter table scraped_profiles enable row level security;
 
-create policy "Scraped select own"
-on scraped_profiles for select
-using (user_id = auth.uid());
-
-create policy "Scraped insert own"
-on scraped_profiles for insert
-with check (user_id = auth.uid());
-
-create policy "Scraped delete own"
-on scraped_profiles for delete
-using (user_id = auth.uid());
+create policy "Scraped select own" on scraped_profiles for select using (user_id = auth.uid());
+create policy "Scraped insert own" on scraped_profiles for insert with check (user_id = auth.uid());
+create policy "Scraped delete own" on scraped_profiles for delete using (user_id = auth.uid());
 ```
 
 ## Environment Variables
-Create `.env` in the project root:
 
-```bash
-cp .env.example .env
-```
+See `.env.example` for all required variables. Key variables:
 
-Fill in:
-
-```
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-LINKEDIN_EMAIL=...
-LINKEDIN_PASSWORD=...
-```
-
-## Ollama Setup
-Make sure Ollama is running and the model is pulled:
-
-```bash
-ollama run phi3
-```
-
-## Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-```bash
-cd frontend
-npm install
-```
-
-## Run (Single Command)
-
-```bash
-cd frontend
-npm run dev
-```
-
-This starts:
-- **FastAPI** on `http://localhost:8000`
-- **Vite** on `http://localhost:5173`
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key |
+| `LINKEDIN_EMAIL` | LinkedIn account email |
+| `LINKEDIN_PASSWORD` | LinkedIn account password |
+| `LOCAL_LLM` | Set to `true` to use Ollama instead of Groq |
+| `GROQ_API_KEY` | Groq API key (required unless `LOCAL_LLM=true`) |
 
 ## Notes
-- **Admins** can scrape and refresh profiles.
-- **Viewers** can only match against existing Supabase data (or `mock_profiles.json` if empty).
-- LinkedIn cookies are saved in `credentials/linkedin_cookies.json` after a successful login.
+
+- **Admins** can scrape and refresh profiles. **Viewers** can only match against existing data.
+- LinkedIn session data is persisted in a Docker volume (`linkedin_sessions`) so you don't need to re-login on each restart.
+- The backend's CORS allows requests from `localhost:5173` (Vite dev) and `localhost` (Docker nginx).

@@ -30,3 +30,7 @@ chromedriver*
 
 # LinkedIn session data
 credentials/linkedin_session.json
+credentials/linkedin_cookies.json
+
+# Docker
+backend/.eggs/
