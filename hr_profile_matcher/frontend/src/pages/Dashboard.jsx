@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import Logo from "../components/Logo.jsx";
 import CandidatesPanel from "../components/CandidatesPanel.jsx";
 import ConfirmClearModal from "../components/ConfirmClearModal.jsx";
+import ConfirmSignOutModal from "../components/ConfirmSignOutModal.jsx";
 import ConfirmQueryModal from "../components/ConfirmQueryModal.jsx";
 import CriteriaPanel from "../components/CriteriaPanel.jsx";
 
@@ -40,14 +41,15 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState("matched");
   const [totalInDb, setTotalInDb] = useState(null);
   const [showClearModal, setShowClearModal] = useState(false);
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
   const initialLoadDone = useRef(false);
 
-  // ── Auth ──
+  // Auth
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
-        navigate("/login");
+        navigate("/");
         return;
       }
       setToken(data.session.access_token);
@@ -55,7 +57,7 @@ export default function Dashboard() {
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!newSession) {
-        navigate("/login");
+        navigate("/");
       } else {
         setToken(newSession.access_token);
       }
@@ -73,7 +75,7 @@ export default function Dashboard() {
     };
   }, [token]);
 
-  // ── Fetch user profile ──
+  // Fetch user profile
 
   useEffect(() => {
     if (!token) return;
@@ -90,7 +92,7 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, [token, authHeaders]);
 
-  // ── Fetch scraped profiles once on load ──
+  // Fetch scraped profiles on load
 
   useEffect(() => {
     if (!token || initialLoadDone.current) return;
@@ -111,7 +113,7 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
-  // ── Fetch/refresh profiles (reusable) ──
+  // Fetch/refresh profiles
 
   const fetchScrapedProfiles = useCallback(async () => {
     if (!token) return;
@@ -125,7 +127,7 @@ export default function Dashboard() {
     } catch {}
   }, [token, authHeaders]);
 
-  // ── Actions ──
+  // Actions
 
   const runScrape = async (query) => {
     setScraping(true);
@@ -236,14 +238,15 @@ export default function Dashboard() {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleConfirmSignOut = async () => {
+    setShowSignOutModal(false);
     await supabase.auth.signOut();
-    navigate("/login");
+    navigate("/");
   };
 
   const isLoading = scraping || matching;
 
-  // ── Stats ──
+  // Stats
 
   const stats = [
     {
@@ -277,13 +280,13 @@ export default function Dashboard() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-950 text-white">
-      {/* ── Background accents ── */}
+      {/* Background accents */}
       <div className="pointer-events-none fixed inset-0">
         <div className="absolute -left-48 -top-48 h-[600px] w-[600px] rounded-full bg-indigo-500/5 blur-[150px]" />
         <div className="absolute -bottom-48 -right-48 h-[600px] w-[600px] rounded-full bg-purple-500/5 blur-[150px]" />
       </div>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <header className="shrink-0 sticky top-0 z-30 border-b border-slate-800/50 bg-slate-950/90 backdrop-blur-2xl">
         <div className="flex items-center justify-between px-6 py-3">
           <div className="flex items-center gap-4">
@@ -303,7 +306,7 @@ export default function Dashboard() {
             </div>
           </div>
           <button
-            onClick={handleSignOut}
+            onClick={() => setShowSignOutModal(true)}
             className="rounded-lg border border-slate-700/50 bg-slate-800/40 px-3.5 py-2 text-xs font-medium text-slate-400 transition-all hover:border-slate-600 hover:bg-slate-700/50 hover:text-white active:scale-[0.97]"
           >
             Sign out
@@ -311,9 +314,9 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── Main content ── */}
+      {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden px-6 py-6">
-        {/* ── Stats bar ── */}
+        {/* Stats bar */}
         <div className="mb-6 grid shrink-0 grid-cols-3 gap-3">
           {stats.map((stat, i) => (
             <div
@@ -330,7 +333,7 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* ── Grid layout ── */}
+        {/* Grid layout */}
         <div className="grid min-h-0 flex-1 gap-6 overflow-hidden lg:grid-cols-[380px_1fr]">
           <div className="animate-fade-in-up overflow-y-auto min-h-0" style={{ animationDelay: "150ms" }}>
             <CriteriaPanel
@@ -398,8 +401,14 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Modal ── */}
-      {/* ── Clear confirmation modal ── */}
+      {/* Sign out modal */}
+      <ConfirmSignOutModal
+        open={showSignOutModal}
+        onClose={() => setShowSignOutModal(false)}
+        onConfirm={handleConfirmSignOut}
+      />
+
+      {/* Clear modal */}
       <ConfirmClearModal
         open={showClearModal}
         onClose={() => setShowClearModal(false)}
@@ -421,7 +430,7 @@ export default function Dashboard() {
         profilesFound={profilesFound}
       />
 
-      {/* ── Loading overlay for scrape/match ── */}
+      {/* Loading overlay */}
       {isLoading && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="glass-strong animate-scale-in rounded-2xl px-8 py-6 text-center shadow-2xl">

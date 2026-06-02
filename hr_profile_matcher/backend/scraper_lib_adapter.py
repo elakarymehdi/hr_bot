@@ -258,7 +258,7 @@ async def _login_and_search(
         await asyncio.sleep(1.5)
 
     # Extract profile data from search result CARDS
-    # This is the ONLY data source — LinkedIn rate-limits profile page visits,
+    # Only rely on card data — LinkedIn rate-limits individual profile visits
     # but search result cards are always accessible. Card data (name, title,
     # location, company) is enough for candidate matching.
     card_data = await page.evaluate(

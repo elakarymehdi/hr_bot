@@ -169,7 +169,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
 
   return (
     <div className="glass rounded-2xl p-5 shadow-xl shadow-indigo-500/5">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">
@@ -246,7 +246,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
         </div>
       </div>
 
-      {/* ── Search filter ── */}
+      {/* Search filter */}
       <div className="relative mt-3">
         <svg
           className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500"
@@ -265,7 +265,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
         />
       </div>
 
-      {/* ── Content ── */}
+      {/* Content */}
       {loading && (
         <div className="mt-6 space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (

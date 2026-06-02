@@ -2,14 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ────────── Base ────────── */
+/* Base */
 
 body {
   font-family: "Inter", "Segoe UI", sans-serif;
   scroll-behavior: smooth;
 }
 
-/* ────────── Custom Scrollbar ────────── */
+/* Custom Scrollbar */
 
 ::-webkit-scrollbar {
   width: 6px;
@@ -26,7 +26,7 @@ body {
   background: #475569;
 }
 
-/* ────────── Glass utility ────────── */
+/* Glass utility */
 
 @layer components {
   .glass {
@@ -49,7 +49,7 @@ body {
   }
 }
 
-/* ────────── Animations ────────── */
+/* Animations */
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -121,7 +121,7 @@ body {
 .animation-delay-400 { animation-delay: 400ms; }
 .animation-delay-500 { animation-delay: 500ms; }
 
-/* ────────── Skeleton shimmer ────────── */
+/* Skeleton shimmer */
 
 .skeleton {
   background: linear-gradient(
@@ -135,7 +135,7 @@ body {
   border-radius: 0.5rem;
 }
 
-/* ────────── Range input styling ────────── */
+/* Range input styling */
 
 input[type="range"] {
   -webkit-appearance: none;
@@ -168,7 +168,7 @@ input[type="range"]::-moz-range-thumb {
   border: 2px solid #1e293b;
 }
 
-/* ────────── Focus ring ────────── */
+/* Focus ring */
 
 *:focus-visible {
   outline: 2px solid #6366f1;
@@ -176,7 +176,7 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0.5rem;
 }
 
-/* ────────── Hide number input spinners ────────── */
+/* Hide number spinners */
 
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -189,7 +189,7 @@ input[type="number"] {
   appearance: textfield;
 }
 
-/* ────────── Custom select styling ────────── */
+/* Custom select styling */
 
 select.custom-select {
   -webkit-appearance: none;

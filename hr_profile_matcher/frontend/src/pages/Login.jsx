@@ -49,7 +49,7 @@ export default function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-6">
-      {/* ── Animated gradient background ── */}
+      {/* Animated gradient background */}
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-32 -top-32 h-[500px] w-[500px] rounded-full bg-indigo-500/10 blur-[120px] animate-float" />
         <div className="absolute -bottom-32 -right-32 h-[500px] w-[500px] rounded-full bg-purple-500/10 blur-[120px] animate-float" style={{ animationDelay: "-1.5s" }} />
@@ -65,7 +65,7 @@ export default function Login() {
         />
       </div>
 
-      {/* ── Auth Card ── */}
+      {/* Auth Card */}
       <div className="relative w-full max-w-md animate-fade-in-up">
         <div className="glass-strong rounded-2xl p-8 shadow-2xl shadow-indigo-500/5">
           {/* Brand */}

@@ -102,7 +102,7 @@ export default function CriteriaPanel({
 
   return (
     <div className="glass rounded-2xl p-5 shadow-xl shadow-indigo-500/5">
-      {/* ── Natural language input ── */}
+      {/* Natural language input */}
       <Section title="Describe the Role" defaultOpen={!!naturalLanguage}>
         <div className="relative">
           <textarea
@@ -123,7 +123,7 @@ export default function CriteriaPanel({
 
       <div className="my-4 border-t border-slate-800/50" />
 
-      {/* ── Structured criteria ── */}
+      {/* Structured criteria */}
       <Section title="Job Details">
         <Field label="Job Title">
           <input
@@ -221,7 +221,7 @@ export default function CriteriaPanel({
 
       <div className="my-4 border-t border-slate-800/50" />
 
-      {/* ── Thresholds & Modes ── */}
+      {/* Thresholds & Modes */}
       <Section title="Thresholds &amp; Modes" defaultOpen={false}>
         <Field label={`Min Match Score: ${criteria.min_score}%`}>
           <input
@@ -280,7 +280,7 @@ export default function CriteriaPanel({
         )}
       </Section>
 
-      {/* ── CTA ── */}
+      {/* CTA */}
       <div className="mt-6">
         <button
           onClick={onFindCandidates}

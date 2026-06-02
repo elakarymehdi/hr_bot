@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Logo from "../components/Logo.jsx";
 
-/* ────────── Icons (inline SVGs, no deps) ────────── */
+/* Icons (inline SVGs, no deps) */
 
 const icons = {
   search: (
@@ -53,7 +53,7 @@ const icons = {
   ),
 };
 
-/* ────────── Features data ────────── */
+/* Features data */
 
 const features = [
   {
@@ -94,7 +94,7 @@ const features = [
   },
 ];
 
-/* ────────── Steps data ────────── */
+/* Steps data */
 
 const steps = [
   {
@@ -119,7 +119,7 @@ const steps = [
   },
 ];
 
-/* ────────── Component ────────── */
+/* Component */
 
 export default function Landing() {
   const navigate = useNavigate();
@@ -146,7 +146,7 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
-      {/* ────────── NAV ────────── */}
+      {/* NAV */}
       <nav
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           scrolled ? "glass border-b border-slate-800/50 shadow-xl shadow-indigo-500/5" : ""
@@ -233,7 +233,7 @@ export default function Landing() {
         )}
       </nav>
 
-      {/* ────────── HERO ────────── */}
+      {/* HERO */}
       <section id="hero" className="relative min-h-screen flex items-center justify-center overflow-hidden pt-20">
         {/* Background */}
         <div className="pointer-events-none absolute inset-0">
@@ -327,7 +327,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ────────── FEATURES ────────── */}
+      {/* FEATURES */}
       <section id="features" className="relative py-24 sm:py-32">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-0 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-indigo-500/5 blur-[150px]" />
@@ -363,7 +363,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ────────── HOW IT WORKS ────────── */}
+      {/* HOW IT WORKS */}
       <section id="how-it-works" className="relative py-24 sm:py-32">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute -left-48 top-1/3 h-[500px] w-[500px] rounded-full bg-purple-500/5 blur-[150px]" />
@@ -399,7 +399,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ────────── STATS ────────── */}
+      {/* STATS */}
       <section className="relative py-20">
         <div className="mx-auto max-w-5xl px-6">
           <div className="glass rounded-3xl p-8 sm:p-12">
@@ -421,7 +421,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ────────── CTA ────────── */}
+      {/* CTA */}
       <section id="cta" className="relative py-24 sm:py-32">
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute left-1/2 top-1/2 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-500/10 blur-[150px]" />
@@ -448,7 +448,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ────────── FOOTER ────────── */}
+      {/* FOOTER */}
       <footer className="border-t border-slate-800/50 py-12">
         <div className="mx-auto max-w-7xl px-6">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
