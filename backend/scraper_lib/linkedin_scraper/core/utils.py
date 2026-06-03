@@ -86,16 +86,17 @@ async def detect_rate_limit(page: Page) -> None:
     except Exception:
         pass
     
-    # Check for rate limit messages
+    # Check for actual rate limit messages in the page body.
+    # We only check the page TITLE to avoid false positives from
+    # normal profile content (e.g. "slow down" in someone's about section).
     try:
-        body_text = await page.locator('body').text_content(timeout=1000)
-        if body_text:
-            body_lower = body_text.lower()
-            if any(phrase in body_lower for phrase in [
+        title_text = await page.locator('title').text_content(timeout=1000)
+        if title_text:
+            title_lower = title_text.lower()
+            if any(phrase in title_lower for phrase in [
                 'too many requests',
                 'rate limit',
-                'slow down',
-                'try again later'
+                'too many'
             ]):
                 raise RateLimitError(
                     "Rate limit message detected on page.",

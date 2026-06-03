@@ -163,6 +163,7 @@ async def scrape(
                 "summary": profile.get("summary"),
                 "skills": profile.get("skills") or [],
                 "experience": profile.get("experience") or [],
+                "education": profile.get("education") or [],
                 "raw_text": profile.get("raw_text"),
             }
         )
