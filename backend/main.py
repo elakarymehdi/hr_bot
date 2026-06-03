@@ -111,6 +111,11 @@ async def unhandled_exception_handler(_: Request, exc: Exception) -> JSONRespons
     )
 
 
+@app.get("/api/health")
+async def health() -> dict:
+    return {"status": "ok"}
+
+
 @app.post("/api/parse-nl")
 async def parse_nl(payload: ParseNLRequest) -> dict:
     return parse_nl_to_form(payload.natural_language)
@@ -179,9 +184,7 @@ async def match(
     profiles = response.data or []
 
     if not profiles:
-        mock_path = Path(__file__).with_name("mock_profiles.json")
-        with open(mock_path, "r", encoding="utf-8") as file:
-            profiles = json.load(file)
+        return {"results": [], "count": 0, "message": "No profiles in database. Run a scrape first."}
 
     results = match_profiles(payload, profiles)
     return {"results": results, "count": len(results)}

@@ -20,6 +20,12 @@ services:
     volumes:
       - linkedin_sessions:/app/credentials
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   frontend:
     build:
@@ -31,7 +37,8 @@ services:
     ports:
       - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

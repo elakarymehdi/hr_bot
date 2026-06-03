@@ -29,6 +29,7 @@ FROM python:3.11-slim
 
 # System deps needed at runtime for Playwright Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \

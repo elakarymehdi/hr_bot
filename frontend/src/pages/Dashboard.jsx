@@ -16,6 +16,8 @@ const emptyCriteria = {
   years_experience: 0,
   location: "",
   contract_type: "Any",
+  education_level: "Any",
+  sector: "",
   min_score: 50,
   raw_description: "",
 };
@@ -428,6 +430,7 @@ export default function Dashboard() {
         loading={scraping || matching}
         mode={modalMode}
         profilesFound={profilesFound}
+        criteria={criteria}
       />
 
       {/* Loading overlay */}

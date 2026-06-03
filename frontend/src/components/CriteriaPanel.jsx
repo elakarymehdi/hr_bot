@@ -72,6 +72,8 @@ export default function CriteriaPanel({
           years_experience: data.years_experience ?? prev.years_experience,
           location: data.location ?? prev.location,
           contract_type: data.contract_type ?? prev.contract_type,
+          education_level: data.education_level ?? prev.education_level,
+          sector: data.sector ?? prev.sector,
         }));
       } finally {
         setParsing(false);
@@ -216,6 +218,35 @@ export default function CriteriaPanel({
             <option value="Stage">Stage</option>
             <option value="Any">Any</option>
           </select>
+        </Field>
+
+        <Field label="Education Level">
+          <select
+            className="custom-select w-full rounded-xl bg-slate-800/60 px-3.5 py-2 text-sm text-white transition-all focus:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={criteria.education_level || "Any"}
+            onChange={(event) =>
+              onCriteriaChange({ ...criteria, education_level: event.target.value })
+            }
+          >
+            <option value="Any">Any</option>
+            <option value="Bac+2">Bac+2</option>
+            <option value="Bac+3">Bac+3</option>
+            <option value="Bac+5">Bac+5</option>
+            <option value="Master">Master</option>
+            <option value="Doctorat">Doctorat</option>
+            <option value="MBA">MBA</option>
+          </select>
+        </Field>
+
+        <Field label="Industry / Sector">
+          <input
+            className="w-full rounded-xl bg-slate-800/60 px-3.5 py-2 text-sm text-white placeholder-slate-500 transition-all focus:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            placeholder="e.g. automobile, finance, tech"
+            value={criteria.sector || ""}
+            onChange={(event) =>
+              onCriteriaChange({ ...criteria, sector: event.target.value })
+            }
+          />
         </Field>
       </Section>
 
