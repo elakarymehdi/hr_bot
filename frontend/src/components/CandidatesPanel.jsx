@@ -375,7 +375,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
                 {hasScore && candidate.match_score !== undefined && (
                   <div className="shrink-0 text-right">
                     <span className={`text-lg font-bold tabular-nums tracking-tight ${scoreColor(candidate.match_score)}`}>
-                      {candidate.match_score}
+                      {candidate.match_score.toFixed(2)}
                       <span className="text-xs font-normal">%</span>
                     </span>
                   </div>

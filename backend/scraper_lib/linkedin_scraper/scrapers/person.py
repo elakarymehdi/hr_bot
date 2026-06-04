@@ -8,6 +8,7 @@ that kept failing against LinkedIn's ever-changing layout.
 import json
 import logging
 import os
+import time
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
 
@@ -30,7 +31,7 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 def _call_groq(prompt: str, max_tokens: int = 2048) -> str:
-    """Call Groq chat-completions API and return the response text."""
+    """Call Groq chat-completions API with retry on 429 rate limits."""
     api_key = os.environ.get("GROQ_API_KEY", "")
     if not api_key:
         raise ValueError("GROQ_API_KEY is not set — cannot call Groq API")
@@ -45,10 +46,26 @@ def _call_groq(prompt: str, max_tokens: int = 2048) -> str:
         "temperature": 0.05,
         "max_tokens": max_tokens,
     }
-    response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=60)
-    response.raise_for_status()
-    data = response.json()
-    return data["choices"][0]["message"]["content"].strip()
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = requests.post(GROQ_URL, json=payload, headers=headers, timeout=60)
+            if response.status_code == 429 and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)  # 2, 4, 8 seconds
+                logger.warning("Groq rate limited (429), retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
+                time.sleep(wait)
+                continue
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"].strip()
+        except requests.RequestException as e:
+            if hasattr(e, 'response') and e.response is not None and e.response.status_code == 429 and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)
+                logger.warning("Groq rate limited, retrying in %ds (attempt %d/%d)", wait, attempt + 1, max_retries)
+                time.sleep(wait)
+            else:
+                raise
 
 
 def _parse_llm_json(raw: str) -> list[dict]:
@@ -182,7 +199,7 @@ class PersonScraper(BaseScraper):
             await self.page.wait_for_selector("main", timeout=10000)
             await self.wait_and_focus(1)
 
-            name, location = await self._get_name_and_location()
+            name, location, headline = await self._get_name_and_location()
             await self.callback.on_progress(f"Got name: {name}", 20)
 
             open_to_work = await self._check_open_to_work()
@@ -201,6 +218,7 @@ class PersonScraper(BaseScraper):
             person = Person(
                 linkedin_url=linkedin_url,
                 name=name,
+                headline=headline or None,
                 location=location,
                 about=about,
                 open_to_work=open_to_work,
@@ -216,21 +234,54 @@ class PersonScraper(BaseScraper):
             await self.callback.on_error(e)
             raise ScrapingError(f"Failed to scrape person profile: {e}")
 
-    async def _get_name_and_location(self) -> tuple[str, Optional[str]]:
-        """Extract name and location from profile."""
+    async def _get_name_and_location(self) -> tuple[str, Optional[str], Optional[str]]:
+        """Extract name, location, and headline from the profile page.
+
+        Primary: parse `document.title` — LinkedIn format is always
+        "Name - Headline | LinkedIn" — pure Python, no API call, no JS, no regex.
+        Fallback: h1 element for name, empty headline.
+        """
+        name = "Unknown"
+        headline = ""
+
         try:
-            result = await self.page.evaluate("""() => {
-                const h1 = document.querySelector('h1');
-                const name = h1 ? h1.innerText.trim() : '';
-                const title = document.title;
-                const meta = document.querySelector('meta[name="description"]');
-                return { name, title, meta: meta ? meta.content : '' };
-            }""")
-            name = (result.get("name") or result.get("title", "").split("|")[0].strip() or "Unknown")
-            return name, None
+            # Get document.title + h1 name in one simple evaluate (no regex, no split)
+            page_data = await self.page.evaluate(
+                """() => ({
+                    title: document.title,
+                    h1: document.querySelector('h1')?.innerText?.trim() || ''
+                })"""
+            )
+            doc_title = page_data.get("title") or ""
+            h1_name = page_data.get("h1") or ""
+
+            # Parse document.title: LinkedIn format "Name - Headline | LinkedIn"
+            if doc_title:
+                # Remove " | LinkedIn" suffix
+                without_suffix = doc_title.rsplit("|", 1)[0].strip() if "|" in doc_title else doc_title
+
+                # Split on " - " to get name and headline
+                if " - " in without_suffix:
+                    parts = without_suffix.split(" - ", 1)
+                    if len(parts) == 2:
+                        parsed_name = parts[0].strip()
+                        parsed_headline = parts[1].strip()
+                        if parsed_name and " " in parsed_name:
+                            name = parsed_name
+                        if parsed_headline:
+                            headline = parsed_headline
+                            logger.info("Got headline from title: %s", headline[:80])
+
+            # Fallback for name: use h1 if title didn't yield a valid name
+            if name == "Unknown" or len(name) < 2 or " " not in name:
+                if h1_name and " " in h1_name:
+                    name = h1_name
+
+            return name, None, headline
+
         except Exception as e:
-            logger.warning("Error getting name/location: %s", e)
-            return "Unknown", None
+            logger.warning("Error getting name/location/headline: %s", e)
+            return "Unknown", None, ""
 
     async def _check_open_to_work(self) -> bool:
         """Check if profile has open to work badge."""
@@ -253,7 +304,7 @@ class PersonScraper(BaseScraper):
                         const section = h.closest('section') || h.parentElement;
                         if (section) {
                             const full = section.innerText.trim();
-                            return full.replace(/^About\\s*/i, '').trim();
+                            return full.replace(/^About\s*/i, '').trim();
                         }
                     }
                 }

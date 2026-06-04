@@ -44,6 +44,8 @@ class CriteriaPayload(BaseModel):
     years_experience: float = 0
     location: str = ""
     contract_type: str = "Any"
+    education_level: str = "Any"
+    sector: str = ""
     raw_description: str = ""
 
 

@@ -136,7 +136,9 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
         '- "required_skills": array of strings\n'
         '- "years_experience": number (0 if not mentioned)\n'
         '- "location": string ("" if not mentioned)\n'
-        '- "contract_type": one of "CDI", "CDD", "Freelance", "Stage", "Any"\n\n'
+        '- "contract_type": one of "CDI", "CDD", "Freelance", "Stage", "Any"\n'
+        '- "education_level": string (one of "Bac+2", "Bac+3", "Bac+5", "Master", "Doctorat", "MBA", "Any"; "Any" if not mentioned)\n'
+        '- "sector": string (industry or sector, "" if not mentioned)\n\n'
         f"Text: {text}\n\n"
         "JSON:"
     )
@@ -155,6 +157,8 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
             "years_experience": parsed.get("years_experience", 0) or 0,
             "location": parsed.get("location", ""),
             "contract_type": parsed.get("contract_type", "Any"),
+            "education_level": parsed.get("education_level", "Any"),
+            "sector": parsed.get("sector", ""),
         }
     except (json.JSONDecodeError, requests.RequestException, ValueError) as exc:
         logger.warning("LLM parse failed: %s — raw: '%s'", exc, raw)
@@ -164,6 +168,8 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
             "years_experience": 0,
             "location": "",
             "contract_type": "Any",
+            "education_level": "Any",
+            "sector": "",
         }
 
 
@@ -182,6 +188,14 @@ def structure_search_query(criteria: Dict[str, Any]) -> str:
         context_parts.append(f"Skills: {', '.join(skills)}")
     if location := criteria.get("location", ""):
         context_parts.append(f"Location: {location}")
+    if contract_type := criteria.get("contract_type", ""):
+        if contract_type != "Any":
+            context_parts.append(f"Contract: {contract_type}")
+    if education_level := criteria.get("education_level", ""):
+        if education_level != "Any":
+            context_parts.append(f"Education: {education_level}")
+    if sector := criteria.get("sector", ""):
+        context_parts.append(f"Sector: {sector}")
     # Include a short hint from the raw description if available (first 120 chars)
     if raw := criteria.get("raw_description", ""):
         context_parts.append(f"Context: {raw[:120].strip()}")

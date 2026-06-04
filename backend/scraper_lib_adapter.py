@@ -346,9 +346,11 @@ async def _enrich_profile(
         person = await scraper.scrape(profile_url)
 
         # Update profile with PersonScraper data
-        # PersonScraper gets: name, location, about, experiences, educations
+        # PersonScraper gets: name, headline, location, about, experiences, educations
         if person.name and person.name != "Unknown":
             profile["name"] = person.name
+        if person.headline:
+            profile["title"] = person.headline
         if person.location:
             profile["location"] = person.location
         if person.about:

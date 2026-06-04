@@ -22,7 +22,9 @@ def match_profiles(criteria, profiles: List[dict]) -> List[dict]:
     required_skills = criteria.required_skills or []
     criteria_text = (
         f"{criteria.job_title} {' '.join(required_skills)} "
-        f"{criteria.years_experience} years {criteria.location} {criteria.raw_description}"
+        f"{criteria.years_experience} years {criteria.location} "
+        f"Contract: {criteria.contract_type} Education: {criteria.education_level} "
+        f"Sector: {criteria.sector} {criteria.raw_description}"
     )
     model = _get_model()
     criteria_vector = model.encode(criteria_text, convert_to_numpy=True)
@@ -31,7 +33,7 @@ def match_profiles(criteria, profiles: List[dict]) -> List[dict]:
     for profile in profiles:
         raw_text = profile.get("raw_text") or ""
         profile_vector = model.encode(raw_text, convert_to_numpy=True)  # model already loaded above
-        score = float(round((1 - cosine(criteria_vector, profile_vector)) * 100, 1))
+        score = float(round((1 - cosine(criteria_vector, profile_vector)) * 100, 2))
         matched_skills = [
             skill
             for skill in required_skills

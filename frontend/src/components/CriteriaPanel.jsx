@@ -298,12 +298,25 @@ export default function CriteriaPanel({
         {(searchMode === "scrape" || searchMode === "both") && (
           <Field label="Max Results">
             <input
-              type="text"
-              inputMode="numeric"
-              value={maxResults || ""}
+              type="number"
+              min={1}
+              max={20}
+              step={1}
+              value={maxResults}
               onChange={(event) => {
-                const raw = event.target.value.replace(/^0+/, "") || "0";
-                onMaxResultsChange(Math.min(20, Math.max(1, Number(raw))));
+                const raw = event.target.value;
+                if (raw === "") {
+                  onMaxResultsChange("");
+                } else {
+                  onMaxResultsChange(Number(raw));
+                }
+              }}
+              onBlur={() => {
+                let num = maxResults === "" ? 1 : Number(maxResults);
+                if (isNaN(num) || num < 1) num = 1;
+                if (num > 20) num = 20;
+                num = Math.round(num);
+                onMaxResultsChange(num);
               }}
               className="w-full rounded-xl bg-slate-800/60 px-3.5 py-2 text-sm text-white transition-all focus:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             />

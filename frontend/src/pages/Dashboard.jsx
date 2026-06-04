@@ -134,10 +134,16 @@ export default function Dashboard() {
   const runScrape = async (query) => {
     setScraping(true);
     try {
+      // Ensure a valid number is always sent (guard against stale state during
+      // React 18 batching when the user clicks "Find Candidates" mid-edit)
+      const safeMax =
+        typeof maxResults === "number" && maxResults >= 1
+          ? Math.round(Math.min(maxResults, 20))
+          : 20;
       const response = await fetch(`${API_BASE}/api/scrape`, {
         method: "POST",
         headers: authHeaders,
-        body: JSON.stringify({ search_query: query, max_results: maxResults }),
+        body: JSON.stringify({ search_query: query, max_results: safeMax }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Scrape failed");
@@ -242,8 +248,11 @@ export default function Dashboard() {
 
   const handleConfirmSignOut = async () => {
     setShowSignOutModal(false);
-    await supabase.auth.signOut();
+    // Navigate away immediately before signing out to avoid a race condition
+    // where the auth state listener also triggers navigate("/"), causing
+    // the first click to appear to do nothing.
     navigate("/");
+    await supabase.auth.signOut();
   };
 
   const isLoading = scraping || matching;
