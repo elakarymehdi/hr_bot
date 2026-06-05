@@ -212,55 +212,73 @@ async def _extract_card_data(page, max_results: int) -> List[dict]:
         """() => {
         const profiles = [];
         const seen = new Set();
-        const links = document.querySelectorAll('a');
-        for (const link of links) {
-            const href = link.href;
-            if (!href.includes('linkedin.com/in/') || seen.has(href)) continue;
+        const cards = Array.from(document.querySelectorAll('div[role=\"listitem\"]'));
 
-            let cardEl = link;
-            let cardText = '';
-            for (let depth = 0; depth < 8; depth++) {
-                if (!cardEl.parentElement) break;
-                cardEl = cardEl.parentElement;
-                const text = cardEl.innerText || '';
-                const lines = text.split('\\n').filter(l => l.trim());
-                if (lines.length >= 3) {
-                    cardText = text;
-                    break;
-                }
-            }
+        const cleanName = (value) => {
+            if (!value) return '';
+            return value
+                .replace(/[\\u200e\\u200f\\u202a-\\u202e]/g, '')
+                .split('•')[0]
+                .split('·')[0]
+                .trim();
+        };
 
-            if (!cardText) continue;
+        const isNoiseLine = (text) => {
+            if (!text) return true;
+            const lower = text.toLowerCase();
+            if (/(mutual|shared) connection/.test(lower)) return true;
+            if (/(connect|message|follow)/.test(lower)) return true;
+            if (/\\b\\d+(st|nd|rd|th)\\b/.test(lower)) return true;
+            if (lower.startsWith('current:') || lower.startsWith('past:')) return true;
+            if (lower.startsWith('summary:')) return true;
+            return false;
+        };
+
+        for (const card of cards) {
+            const anchors = Array.from(card.querySelectorAll('a[href*=\"linkedin.com/in/\"]'));
+            const nameAnchor = anchors.find((a) => (a.innerText || '').trim());
+            if (!nameAnchor) continue;
+
+            const href = nameAnchor.href;
+            if (!href || seen.has(href)) continue;
             seen.add(href);
 
-            const lines = cardText.split('\\n').map(l => l.trim()).filter(l => l.length > 0);
-            if (lines.length < 2) continue;
-
-            const name = lines[0];
+            const name = cleanName(nameAnchor.innerText || '');
             if (!name) continue;
+
+            const pTags = Array.from(card.querySelectorAll('p'));
+            let nameIndex = -1;
+            for (let i = 0; i < pTags.length; i++) {
+                const p = pTags[i];
+                const links = p.querySelectorAll('a');
+                if (links.length > 1) continue;
+                if (p.querySelector('a[href*=\"linkedin.com/in/\"]')) {
+                    const text = (p.innerText || '').trim();
+                    if (text.includes(name)) {
+                        nameIndex = i;
+                        break;
+                    }
+                }
+            }
 
             let title = '';
             let location = '';
             let company = '';
 
-            for (let i = 1; i < lines.length && i < 10; i++) {
-                const line = lines[i];
-                if (line.match(/^[\\s]*[\\u2022\\u2023\\u25E6\\*\\-]/) ||
-                    line.match(/\\d+(st|nd|rd)\\s*(\\u2022|$)/)) {
+            for (let i = nameIndex + 1; i < pTags.length; i++) {
+                const p = pTags[i];
+                if (p.querySelectorAll('a').length > 0) continue;
+                const text = (p.innerText || '').trim();
+                if (!text) continue;
+
+                if (isNoiseLine(text)) continue;
+                if (!title) {
+                    title = text;
                     continue;
                 }
-                if (/^(connect|message|follow|more|\\u2022|\\s*$)/i.test(line)) continue;
-                if (line.toLowerCase().includes('mutual connection')) continue;
-                if (line.toLowerCase().startsWith('summary:')) continue;
-
-                if (!title) {
-                    title = line;
-                } else if (!location &&
-                           !line.toLowerCase().startsWith('current:') &&
-                           !line.toLowerCase().startsWith('past:')) {
-                    location = line;
-                } else if (line.toLowerCase().startsWith('current:')) {
-                    company = line.replace(/^current:\\s*/i, '').trim();
+                if (!location) {
+                    location = text;
+                    continue;
                 }
             }
 
@@ -274,6 +292,7 @@ async def _extract_card_data(page, max_results: int) -> List[dict]:
 
             if (profiles.length >= 25) break;
         }
+
         return profiles;
     }"""
     )
@@ -346,11 +365,8 @@ async def _enrich_profile(
         person = await scraper.scrape(profile_url)
 
         # Update profile with PersonScraper data
+        # Keep name/title from search cards to avoid cross-profile header noise.
         # PersonScraper gets: name, headline, location, about, experiences, educations
-        if person.name and person.name != "Unknown":
-            profile["name"] = person.name
-        if person.headline:
-            profile["title"] = person.headline
         if person.location:
             profile["location"] = person.location
         if person.about:

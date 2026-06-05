@@ -8,6 +8,7 @@ that kept failing against LinkedIn's ever-changing layout.
 import json
 import logging
 import os
+import re
 import time
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse, urlunparse
@@ -127,6 +128,65 @@ def _clean_profile_url(profile_url: str) -> str:
     return urlunparse(parsed)
 
 
+def _extract_profile_slug_tokens(profile_url: str) -> list[str]:
+    """Extract name tokens from a LinkedIn profile URL slug."""
+    try:
+        parsed = urlparse(profile_url)
+    except Exception:
+        return []
+
+    parts = [p for p in parsed.path.split("/") if p]
+    if "in" not in parts:
+        return []
+    idx = parts.index("in")
+    if idx + 1 >= len(parts):
+        return []
+
+    slug = parts[idx + 1]
+    # Strip locale suffix if present (e.g. /in/name/en/)
+    if len(parts) > idx + 2 and len(parts[idx + 2]) == 2 and parts[idx + 2].isalpha():
+        slug = parts[idx + 1]
+
+    tokens = []
+    for token in slug.split("-"):
+        token = re.sub(r"[^a-zA-Z]", "", token).lower()
+        if len(token) >= 2:
+            tokens.append(token)
+    return tokens
+
+
+def _clean_display_name(name: str) -> str:
+    """Normalize LinkedIn display names (remove connection badges, trim whitespace)."""
+    if not name:
+        return ""
+    cleaned = name.split("•", 1)[0].strip()
+    cleaned = cleaned.split("·", 1)[0].strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
+
+
+def _name_matches_slug(name: str, slug_tokens: list[str]) -> bool:
+    if not slug_tokens:
+        return True
+    if not name:
+        return False
+    name_tokens = [
+        re.sub(r"[^a-z]", "", token.lower())
+        for token in re.split(r"\s+", name)
+    ]
+    name_tokens = [token for token in name_tokens if token]
+    if not name_tokens:
+        return False
+    matches = sum(1 for token in slug_tokens if token in name_tokens)
+    return matches / len(slug_tokens) >= 0.6
+
+
+def _name_from_slug(slug_tokens: list[str]) -> str:
+    if not slug_tokens:
+        return ""
+    return " ".join(token.capitalize() for token in slug_tokens)
+
+
 # ---------------------------------------------------------------------------
 # Groq-based extraction prompts
 # ---------------------------------------------------------------------------
@@ -199,7 +259,7 @@ class PersonScraper(BaseScraper):
             await self.page.wait_for_selector("main", timeout=10000)
             await self.wait_and_focus(1)
 
-            name, location, headline = await self._get_name_and_location()
+            name, location, headline = await self._get_name_and_location(linkedin_url)
             await self.callback.on_progress(f"Got name: {name}", 20)
 
             open_to_work = await self._check_open_to_work()
@@ -234,26 +294,40 @@ class PersonScraper(BaseScraper):
             await self.callback.on_error(e)
             raise ScrapingError(f"Failed to scrape person profile: {e}")
 
-    async def _get_name_and_location(self) -> tuple[str, Optional[str], Optional[str]]:
+    async def _get_name_and_location(self, linkedin_url: str) -> tuple[str, Optional[str], Optional[str]]:
         """Extract name, location, and headline from the profile page.
 
         Primary: parse `document.title` — LinkedIn format is always
-        "Name - Headline | LinkedIn" — pure Python, no API call, no JS, no regex.
+        "Name - Headline | LinkedIn" — no API call, no DOM selectors beyond h1.
         Fallback: h1 element for name, empty headline.
         """
         name = "Unknown"
         headline = ""
+        slug_tokens = _extract_profile_slug_tokens(linkedin_url)
+        slug_name = _name_from_slug(slug_tokens)
+        name_source = "unknown"
 
         try:
-            # Get document.title + h1 name in one simple evaluate (no regex, no split)
+            # Get document.title + h1 name + header text in one evaluate.
             page_data = await self.page.evaluate(
                 """() => ({
                     title: document.title,
-                    h1: document.querySelector('h1')?.innerText?.trim() || ''
+                    h1: (document.querySelector('main h1') || document.querySelector('h1'))?.innerText?.trim() || '',
+                    headerLines: (() => {
+                        const h1 = document.querySelector('main h1') || document.querySelector('h1');
+                        if (!h1) return [];
+                        const header = h1.closest('section') || h1.parentElement;
+                        if (!header) return [];
+                        return (header.innerText || '')
+                            .split('\\n')
+                            .map(l => l.trim())
+                            .filter(Boolean);
+                    })()
                 })"""
             )
             doc_title = page_data.get("title") or ""
-            h1_name = page_data.get("h1") or ""
+            h1_name = _clean_display_name(page_data.get("h1") or "")
+            header_lines = page_data.get("headerLines") or []
 
             # Parse document.title: LinkedIn format "Name - Headline | LinkedIn"
             if doc_title:
@@ -264,18 +338,45 @@ class PersonScraper(BaseScraper):
                 if " - " in without_suffix:
                     parts = without_suffix.split(" - ", 1)
                     if len(parts) == 2:
-                        parsed_name = parts[0].strip()
+                        parsed_name = _clean_display_name(parts[0].strip())
                         parsed_headline = parts[1].strip()
-                        if parsed_name and " " in parsed_name:
+                        if parsed_name and " " in parsed_name and _name_matches_slug(parsed_name, slug_tokens):
                             name = parsed_name
-                        if parsed_headline:
-                            headline = parsed_headline
-                            logger.info("Got headline from title: %s", headline[:80])
+                            name_source = "title"
+                            if parsed_headline:
+                                headline = parsed_headline
+                                logger.info("Got headline from title: %s", headline[:80])
 
             # Fallback for name: use h1 if title didn't yield a valid name
             if name == "Unknown" or len(name) < 2 or " " not in name:
-                if h1_name and " " in h1_name:
+                if h1_name and " " in h1_name and _name_matches_slug(h1_name, slug_tokens):
                     name = h1_name
+                    name_source = "h1"
+
+            # Final fallback: derive from URL slug to avoid wrong cross-profile names
+            if (name == "Unknown" or len(name) < 2 or " " not in name) and slug_name:
+                name = slug_name
+                name_source = "slug"
+
+            # Headline fallback: use header lines near h1 if title wasn't validated
+            h1_matches = bool(h1_name and _name_matches_slug(h1_name, slug_tokens))
+            if not headline and header_lines and (name_source in {"h1", "title"} or h1_matches):
+                cleaned_lines = []
+                for line in header_lines:
+                    cleaned = _clean_display_name(line)
+                    if not cleaned:
+                        continue
+                    if cleaned.lower().startswith("linkedin member"):
+                        continue
+                    cleaned_lines.append(cleaned)
+
+                for line in cleaned_lines:
+                    if line == name:
+                        continue
+                    if re.search(r"\b\d+(st|nd|rd|th)\b", line.lower()):
+                        continue
+                    headline = line
+                    break
 
             return name, None, headline
 
