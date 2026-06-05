@@ -121,15 +121,15 @@ npm run dev
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SUPABASE_URL` | ✅ | — | Supabase project URL |
-| `SUPABASE_ANON_KEY` | ✅ | — | Supabase anonymous key |
-| `GROQ_API_KEY` | ✅ | — | Groq API key for LLM inference |
-| `LINKEDIN_EMAIL` | ✅ | — | LinkedIn account email |
-| `LINKEDIN_PASSWORD` | ✅ | — | LinkedIn account password |
+| `SUPABASE_URL` | Yes | — | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Yes | — | Supabase anonymous key |
+| `GROQ_API_KEY` | Yes | — | Groq API key for LLM inference |
+| `LINKEDIN_EMAIL` | Yes | — | LinkedIn account email |
+| `LINKEDIN_PASSWORD` | Yes | — | LinkedIn account password |
 | `LOCAL_LLM` | — | `false` | Set `true` to use Ollama instead of Groq |
 | `CORS_ORIGINS` | — | `http://localhost:5173` | Comma-separated allowed CORS origins |
-| `VITE_SUPABASE_URL` | ✅ | — | Same as SUPABASE_URL (for frontend build) |
-| `VITE_SUPABASE_ANON_KEY` | ✅ | — | Same as SUPABASE_ANON_KEY (for frontend build) |
+| `VITE_SUPABASE_URL` | Yes | — | Same as SUPABASE_URL (for frontend build) |
+| `VITE_SUPABASE_ANON_KEY` | Yes | — | Same as SUPABASE_ANON_KEY (for frontend build) |
 
 ## Scraper Session
 

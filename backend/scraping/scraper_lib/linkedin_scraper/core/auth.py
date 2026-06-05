@@ -165,7 +165,7 @@ async def login_with_credentials(
         logged_in = False
         while (time.time() - start_time) * 1000 < 5000:
             if await is_logged_in(page):
-                logger.info("✓ Successfully logged in to LinkedIn")
+                logger.info("Successfully logged in to LinkedIn")
                 logged_in = True
                 break
             await asyncio.sleep(0.5)  # Poll every 500ms
@@ -224,7 +224,7 @@ async def login_with_cookie(page: Page, cookie_value: str) -> None:
          logged_in = False
          while (time.time() - start_time) * 1000 < 5000:
              if await is_logged_in(page):
-                 logger.info("✓ Successfully authenticated with cookie")
+                 logger.info("Successfully authenticated with cookie")
                  logged_in = True
                  break
              await asyncio.sleep(0.5)  # Poll every 500ms
@@ -291,7 +291,7 @@ async def wait_for_manual_login(page: Page, timeout: int = 300000) -> None:
         AuthenticationError: If timeout or login not completed
     """
     logger.info(
-        "⏳ Please complete the login process manually in the browser. "
+        "Please complete the login process manually in the browser. "
         "Waiting up to 5 minutes..."
     )
     
@@ -300,7 +300,7 @@ async def wait_for_manual_login(page: Page, timeout: int = 300000) -> None:
     while True:
         # Check if logged in
         if await is_logged_in(page):
-            logger.info("✓ Manual login completed successfully")
+            logger.info("Manual login completed successfully")
             return
         
         # Check timeout

@@ -62,7 +62,7 @@ class ConsoleCallback(ProgressCallback):
     
     async def on_start(self, scraper_type: str, url: str) -> None:
         """Print start message."""
-        print(f"🚀 Starting {scraper_type} scraping: {url}")
+        print(f"Starting {scraper_type} scraping: {url}")
     
     async def on_progress(self, message: str, percent: int) -> None:
         """Print progress message."""
@@ -74,11 +74,11 @@ class ConsoleCallback(ProgressCallback):
     
     async def on_complete(self, scraper_type: str, result: Any) -> None:
         """Print completion message."""
-        print(f"✅ Completed {scraper_type} scraping successfully!")
+        print(f"Completed {scraper_type} scraping successfully!")
     
     async def on_error(self, error: Exception) -> None:
         """Print error message."""
-        print(f"❌ Error: {error}")
+        print(f"Error: {error}")
 
 
 class SilentCallback(ProgressCallback):
