@@ -4,5 +4,9 @@ __pycache__/
 .eggs/
 .git/
 .gitignore
-README.md
+
+# Documentation (not needed at runtime)
+*.md
+
+# Credentials (volume-mounted)
 credentials/linkedin_session.json

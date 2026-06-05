@@ -1,13 +1,15 @@
 """Playwright-based LinkedIn scraper adapter using the linkedin_scraper library.
 
-Two-phase extraction:
-1. Card phase — extract name, title, company, location from search result cards
-   (always succeeds, minimal rate-limiting risk)
-2. Enrichment phase — visit each profile page to get about, experiences,
-   education using PersonScraper from the linkedin_scraper library.
-   Uses human-like delays (5-15s random jitter), comprehensive stealth
-   scripts, feed page resets between profiles, and gracefully falls
-   back to card data if rate-limited.
+Two-phase extraction
+--------------------
+1. **Card phase** — extract name, title, company, location from search result
+   cards (always succeeds, minimal rate-limiting risk).
+
+2. **Enrichment phase** — visit each profile page to get about, experiences,
+   education using ``PersonScraper`` from the linkedin_scraper library.
+   Uses human-like delays (5-15 s random jitter), comprehensive stealth
+   scripts, feed-page resets between profiles, and gracefully falls back
+   to card data if rate-limited.
 """
 
 import asyncio
@@ -17,20 +19,11 @@ import random
 from typing import List
 from urllib.parse import quote_plus
 
-from dotenv import load_dotenv
 from linkedin_scraper import BrowserManager, PersonScraper, SilentCallback
 
-load_dotenv()
+from config import LINKEDIN_EMAIL, LINKEDIN_PASSWORD, SESSION_PATH, SCRAPING_MIN_PROFILE_DELAY, SCRAPING_MAX_PROFILE_DELAY
 
 logger = logging.getLogger(__name__)
-
-SESSION_PATH = os.path.join(
-    os.path.dirname(__file__), "credentials", "linkedin_session.json"
-)
-
-# Delay range between profile enrichment visits (seconds)
-MIN_PROFILE_DELAY = 3
-MAX_PROFILE_DELAY = 8
 
 # ---------------------------------------------------------------------------
 # Comprehensive stealth script — covers most LinkedIn fingerprinting checks
@@ -102,7 +95,6 @@ async def _apply_stealth(page) -> None:
 
 
 async def _find_visible_input_playwright(page, autocomplete_value: str):
-    """Find a visible input by matching its autocomplete attribute."""
     try:
         inputs = await page.query_selector_all("input")
         for inp in inputs:
@@ -212,14 +204,14 @@ async def _extract_card_data(page, max_results: int) -> List[dict]:
         """() => {
         const profiles = [];
         const seen = new Set();
-        const cards = Array.from(document.querySelectorAll('div[role=\"listitem\"]'));
+        const cards = Array.from(document.querySelectorAll('div[role="listitem"]'));
 
         const cleanName = (value) => {
             if (!value) return '';
             return value
                 .replace(/[\\u200e\\u200f\\u202a-\\u202e]/g, '')
-                .split('•')[0]
-                .split('·')[0]
+                .split('\\u2022')[0]
+                .split('\\u00b7')[0]
                 .trim();
         };
 
@@ -235,7 +227,7 @@ async def _extract_card_data(page, max_results: int) -> List[dict]:
         };
 
         for (const card of cards) {
-            const anchors = Array.from(card.querySelectorAll('a[href*=\"linkedin.com/in/\"]'));
+            const anchors = Array.from(card.querySelectorAll('a[href*="linkedin.com/in/"]'));
             const nameAnchor = anchors.find((a) => (a.innerText || '').trim());
             if (!nameAnchor) continue;
 
@@ -252,7 +244,7 @@ async def _extract_card_data(page, max_results: int) -> List[dict]:
                 const p = pTags[i];
                 const links = p.querySelectorAll('a');
                 if (links.length > 1) continue;
-                if (p.querySelector('a[href*=\"linkedin.com/in/\"]')) {
+                if (p.querySelector('a[href*="linkedin.com/in/"]')) {
                     const text = (p.innerText || '').trim();
                     if (text.includes(name)) {
                         nameIndex = i;
@@ -340,39 +332,26 @@ def _build_card_profile(card: dict) -> dict:
     }
 
 
-async def _enrich_profile(
-    page, profile: dict, index: int, total: int
-) -> dict:
-    """Enrich a single profile by visiting its page using PersonScraper.
-
-    PersonScraper handles navigation to profile page, experience, and
-    education detail pages, using page.evaluate() for robust text
-    extraction (not dependent on LinkedIn's changing CSS selectors).
-    Falls back to card data on any error.
-    """
+async def _enrich_profile(page, profile: dict, index: int, total: int) -> dict:
+    """Enrich a single profile by visiting its page using ``PersonScraper``."""
     profile_url = profile["profile_url"]
     logger.info("Enriching profile %d/%d: %s", index + 1, total, profile_url)
 
-    delay = random.uniform(MIN_PROFILE_DELAY, MAX_PROFILE_DELAY)
+    delay = random.uniform(SCRAPING_MIN_PROFILE_DELAY, SCRAPING_MAX_PROFILE_DELAY)
     logger.debug("Waiting %.1fs before enrichment...", delay)
     await asyncio.sleep(delay)
 
     try:
         await _apply_stealth(page)
 
-        # Use PersonScraper to handle navigation + extraction
         scraper = PersonScraper(page, callback=SilentCallback())
         person = await scraper.scrape(profile_url)
 
-        # Update profile with PersonScraper data
-        # Keep name/title from search cards to avoid cross-profile header noise.
-        # PersonScraper gets: name, headline, location, about, experiences, educations
         if person.location:
             profile["location"] = person.location
         if person.about:
             profile["summary"] = person.about
 
-        # Build experience texts from Experience objects
         if person.experiences:
             exp_texts = []
             for exp in person.experiences:
@@ -394,7 +373,6 @@ async def _enrich_profile(
                 profile["experience"] = exp_texts
                 logger.info("  Extracted %d experience entries", len(exp_texts))
 
-        # Build education texts from Education objects
         if person.educations:
             edu_texts = []
             for edu in person.educations:
@@ -414,7 +392,6 @@ async def _enrich_profile(
                 profile["education"] = edu_texts
                 logger.info("  Extracted %d education entries", len(edu_texts))
 
-        # Rebuild raw_text
         raw_parts = [
             profile["name"],
             profile["title"],
@@ -442,12 +419,10 @@ async def _enrich_profile(
     return profile
 
 
-async def _login_and_search(
-    browser: BrowserManager, search_query: str, max_results: int
-) -> List[dict]:
+async def _login_and_search(browser: BrowserManager, search_query: str, max_results: int) -> List[dict]:
     """Login to LinkedIn, search for people, extract card data, then enrich profiles."""
-    email = os.getenv("LINKEDIN_EMAIL") or os.getenv("LINKEDIN_USERNAME")
-    password = os.getenv("LINKEDIN_PASSWORD")
+    email = LINKEDIN_EMAIL
+    password = LINKEDIN_PASSWORD
 
     if not email or not password:
         logger.error("LINKEDIN_EMAIL and LINKEDIN_PASSWORD must be set for login.")
@@ -513,7 +488,7 @@ async def _login_and_search(
     # Phase 2: Enrich profiles by visiting their pages
     logger.info(
         "Phase 2: Enriching up to %d profiles with %d-%ds delays...",
-        len(profiles), MIN_PROFILE_DELAY, MAX_PROFILE_DELAY,
+        len(profiles), SCRAPING_MIN_PROFILE_DELAY, SCRAPING_MAX_PROFILE_DELAY,
     )
 
     for i, profile in enumerate(profiles):
@@ -530,21 +505,19 @@ async def _login_and_search(
     return profiles
 
 
-async def scrape_profiles_lib(
-    search_query: str, max_results: int = 20
-) -> List[dict]:
+async def scrape_profiles_lib(search_query: str, max_results: int = 20) -> List[dict]:
     """Scrape LinkedIn profiles using Playwright with two-phase extraction.
 
     Phase 1: Extract name, title, company, location from search result cards.
     Phase 2: Visit each profile page to enrich with about, experiences, education.
 
     Args:
-        search_query: LinkedIn search query
-        max_results: Maximum number of profiles to scrape (default: 20, max: 20)
+        search_query: LinkedIn search query.
+        max_results: Maximum number of profiles to scrape (default 20, max 20).
 
     Returns:
         List of profile dicts with keys: name, title, company, location,
-        profile_url, summary, skills, experience, education, raw_text
+        profile_url, summary, skills, experience, education, raw_text.
     """
     max_results = min(max_results, 20)
 

@@ -294,7 +294,7 @@ export default function Landing() {
                 <span className="h-2.5 w-2.5 rounded-full bg-rose-500/60" />
                 <span className="h-2.5 w-2.5 rounded-full bg-amber-500/60" />
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/60" />
-                <span className="ml-3 rounded-md bg-slate-800/80 px-3 py-1 text-[11px] text-slate-500">localhost/dashboard</span>
+                <span className="ml-3 rounded-md bg-slate-800/80 px-3 py-1 text-[11px] text-slate-500">conexus.erp.rh/dashboard</span>
               </div>
               <div className="bg-slate-950/80 p-6">
                 <div className="grid gap-4 lg:grid-cols-[280px_1fr]">

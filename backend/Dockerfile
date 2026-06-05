@@ -18,9 +18,9 @@ RUN pip install --no-cache-dir playwright && \
     playwright install chromium && \
     playwright install-deps chromium
 
-# Install the linkedin_scraper library (non-editable so it's fully copied into site-packages)
-COPY scraper_lib/ /app/scraper_lib/
-RUN pip install --no-cache-dir /app/scraper_lib/
+# Install the linkedin_scraper library (vendored in scraping/)
+COPY scraping/scraper_lib/ /app/scraping/scraper_lib/
+RUN pip install --no-cache-dir /app/scraping/scraper_lib/
 
 # ============================================================
 # Stage 2: Runtime — minimal image
@@ -56,8 +56,12 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
-# Copy application code
-COPY main.py matcher.py ollama_parser.py supabase_client.py profile_scraper.py scraper_lib_adapter.py cli.py ./
+# Copy application code (new directory structure)
+COPY main.py cli.py config.py ./
+COPY api/ ./api/
+COPY ai/ ./ai/
+COPY scraping/ ./scraping/
+COPY db/ ./db/
 
 # Create directory for session data
 RUN mkdir -p credentials

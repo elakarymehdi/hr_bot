@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
-"""CLI for running LinkedIn profile scrapers.
+"""CLI for running LinkedIn profile scrapers and the FastAPI server.
 
-Usage:
-    # Use the Playwright library (default)
-    python cli.py --query '"Software Engineer" Python' --max-results 5
+Usage
+-----
+Scrape profiles with the Playwright library backend (default)::
 
-    # Use the legacy Selenium scraper
-    python cli.py --scraper legacy --query '"Software Engineer" Python' --max-results 5
+    python cli.py --query "Software Engineer Python" --max-results 5
 
-    # Start the FastAPI server
+Use the legacy Selenium scraper::
+
+    python cli.py --scraper legacy --query "Software Engineer" --max-results 5
+
+Start the FastAPI web server::
+
     python cli.py serve
 """
 
@@ -18,7 +22,7 @@ import logging
 import sys
 from pathlib import Path
 
-# Add project root to path
+# Add backend/ directory to sys.path so that local imports work
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 logging.basicConfig(
@@ -27,7 +31,7 @@ logging.basicConfig(
 )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="LinkedIn Profile Scraper CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -41,7 +45,7 @@ def main():
     )
     parser.add_argument(
         "--query", "-q",
-        help="LinkedIn search query (e.g. '\"Software Engineer\" Python')",
+        help="LinkedIn search query (e.g. 'Software Engineer Python')",
     )
     parser.add_argument(
         "--max-results", "-n",
@@ -68,13 +72,15 @@ def main():
     _run_scrape(args.scraper, args.query, args.max_results)
 
 
-def _run_scrape(scraper: str, query: str, max_results: int):
-    """Run a scrape with the chosen scraper."""
+def _run_scrape(scraper: str, query: str, max_results: int) -> None:
+    """Run a scrape with the chosen backend."""
     if scraper == "legacy":
-        from profile_scraper import scrape_profiles
+        from scraping.profile_scraper import scrape_profiles
+
         profiles = scrape_profiles(query, max_results)
     else:
-        from scraper_lib_adapter import scrape_profiles_lib
+        from scraping.scraper_lib_adapter import scrape_profiles_lib
+
         profiles = asyncio.run(scrape_profiles_lib(query, max_results))
 
     print(f"\n=== Scraped {len(profiles)} profiles ===\n")
@@ -90,9 +96,10 @@ def _run_scrape(scraper: str, query: str, max_results: int):
         print()
 
 
-def _start_server():
-    """Start the FastAPI server."""
+def _start_server() -> None:
+    """Start the FastAPI development server."""
     import uvicorn
+
     print("Starting FastAPI server on http://localhost:8000")
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 

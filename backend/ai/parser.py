@@ -1,30 +1,36 @@
+"""LLM-powered NLP parsing — converts natural-language job descriptions into
+structured criteria and generates LinkedIn search queries.
+
+Two backends are supported (auto-fallback):
+
+- **Groq API** (default) — fast, cloud-hosted LLM inference
+- **Ollama** — local-only mode (set ``LOCAL_LLM=true``)
+"""
+
 import json
 import logging
-import os
 from typing import Any, Dict
 
 import requests
 
+from config import (
+    GROQ_API_KEY,
+    GROQ_MODEL,
+    GROQ_URL,
+    LOCAL_LLM,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+)
+
 logger = logging.getLogger(__name__)
-
-# --- Configuration ---
-OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "phi3"
-
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
-
-
-def _is_local() -> bool:
-    """Return True if LOCAL_LLM env var is explicitly 'true' (Ollama mode)."""
-    return os.environ.get("LOCAL_LLM", "").strip().lower() == "true"
-
 
 # ---------------------------------------------------------------------------
 # Low-level LLM callers
 # ---------------------------------------------------------------------------
 
+
 def _call_ollama(prompt: str) -> str:
+    """Send a prompt to a local Ollama instance."""
     payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False}
     response = requests.post(OLLAMA_URL, json=payload, timeout=60)
     response.raise_for_status()
@@ -33,17 +39,17 @@ def _call_ollama(prompt: str) -> str:
 
 
 def _call_groq(prompt: str) -> str:
-    """Call Groq chat-completions API.
+    """Call the Groq chat-completions API.
 
-    Raises ValueError if GROQ_API_KEY is not set.
-    Raises requests.RequestException on network / HTTP errors.
+    Raises
+        ValueError: If ``GROQ_API_KEY`` is not set.
+        requests.RequestException: On network / HTTP errors.
     """
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
+    if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is not set — cannot call Groq API")
 
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {GROQ_API_KEY}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -61,10 +67,10 @@ def _call_groq(prompt: str) -> str:
 def _call_llm(prompt: str) -> str:
     """Call the primary LLM provider, falling back to the other on failure.
 
-    Primary:  Groq API (unless LOCAL_LLM=true).
-    Fallback: Ollama (if Groq unavailable) or Groq (if Ollama fails).
+    - Primary: Groq API (unless ``LOCAL_LLM=true``).
+    - Fallback: Ollama (if Groq unavailable) or Groq (if Ollama fails).
     """
-    if _is_local():
+    if LOCAL_LLM:
         try:
             return _call_ollama(prompt)
         except Exception as exc:
@@ -81,6 +87,7 @@ def _call_llm(prompt: str) -> str:
 # ---------------------------------------------------------------------------
 # JSON cleaning helper
 # ---------------------------------------------------------------------------
+
 
 def _clean_json_response(raw: str) -> str:
     """Strip markdown code fences, leading/trailing garbage from model output."""
@@ -123,11 +130,17 @@ def _clean_json_response(raw: str) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def parse_nl_to_form(text: str) -> Dict[str, Any]:
     """Parse natural-language job criteria into a structured form dict.
 
     Uses Groq API by default; falls back to Ollama if Groq is unavailable
-    or LOCAL_LLM=true is set.
+    or ``LOCAL_LLM=true`` is set.
+
+    Returns
+        A dict with keys ``job_title``, ``required_skills``,
+        ``years_experience``, ``location``, ``contract_type``,
+        ``education_level``, ``sector``.
     """
     prompt = (
         "Extract structured job criteria from the text below.\n\n"
@@ -177,7 +190,11 @@ def structure_search_query(criteria: Dict[str, Any]) -> str:
     """Generate a LinkedIn people-search keyword query from structured criteria.
 
     Uses Groq API by default; falls back to Ollama if Groq is unavailable
-    or LOCAL_LLM=true is set.
+    or ``LOCAL_LLM=true`` is set.
+
+    Returns
+        A plain keyword string suitable for LinkedIn's ``?keywords=``
+        search parameter.
     """
     # Build a clean, structured input — avoid dumping the raw dict (which may
     # contain a long raw_description paragraph that distracts the model).
@@ -230,8 +247,22 @@ def structure_search_query(criteria: Dict[str, Any]) -> str:
         result = raw.strip()
 
         # Aggressively strip all quotes (regular + smart) and common punctuation
-        # from the result — the model sometimes ignores the NO quotes rule.
-        for ch in ('"', "\u201c", "\u201d", "\u201e", "\u00ab", "\u00bb", "'", "`", ",", ".", ";", ":", "!", "?"):
+        for ch in (
+            '"',
+            "\u201c",
+            "\u201d",
+            "\u201e",
+            "\u00ab",
+            "\u00bb",
+            "'",
+            "`",
+            ",",
+            ".",
+            ";",
+            ":",
+            "!",
+            "?",
+        ):
             result = result.replace(ch, "")
 
         # Collapse multiple spaces into one

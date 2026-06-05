@@ -1,3 +1,10 @@
+"""Legacy Selenium-based LinkedIn profile scraper.
+
+.. deprecated::
+    Use the Playwright-based scraper in ``scraper_lib_adapter.py`` instead.
+    This module is kept for compatibility but receives no new features.
+"""
+
 import json
 import logging
 import os
@@ -7,7 +14,6 @@ from typing import List
 from urllib.parse import quote_plus
 
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException
 from selenium.webdriver import ChromeOptions
@@ -18,13 +24,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.core.os_manager import ChromeType
 
-load_dotenv()
+from config import COOKIES_PATH, LINKEDIN_EMAIL, LINKEDIN_PASSWORD
 
 logger = logging.getLogger(__name__)
-
-COOKIES_PATH = os.path.join(os.path.dirname(__file__), "credentials", "linkedin_cookies.json")
-LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")
-LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
 
 
 def _build_driver() -> webdriver.Chrome:
@@ -42,8 +44,6 @@ def _build_driver() -> webdriver.Chrome:
     )
     options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
     options.add_experimental_option("useAutomationExtension", False)
-    # Tell webdriver_manager to look for chromium-browser instead of google-chrome,
-    # so it detects the correct version and downloads the matching ChromeDriver.
     service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
     driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(30)
@@ -76,7 +76,6 @@ def _load_cookies(driver: webdriver.Chrome) -> bool:
 
 
 def _try_navigate(driver: webdriver.Chrome, url: str, wait_after: float = 3) -> bool:
-    """Navigate to a URL with timeout recovery."""
     try:
         driver.get(url)
         time.sleep(wait_after)
@@ -88,20 +87,10 @@ def _try_navigate(driver: webdriver.Chrome, url: str, wait_after: float = 3) -> 
         except Exception:
             pass
         time.sleep(1)
-        return True  # Page might still be usable
+        return True
 
 
-def _find_visible_input(driver: webdriver.Chrome, autocomplete_value: str) -> object:
-    """Find a visible input element by its autocomplete attribute value.
-
-    LinkedIn uses SDUI with auto-generated IDs, so we scan ALL input elements
-    and match by autocomplete attribute, checking visibility on each candidate.
-
-    Uses contains-match because LinkedIn sometimes adds extra tokens like
-    "username webauthn" for the visible field while "username" (exact) is a
-    hidden 0x0 placeholder. The is_displayed() check already filters out
-    the hidden placeholders, so we just need the contains match.
-    """
+def _find_visible_input(driver: webdriver.Chrome, autocomplete_value: str):
     try:
         inputs = driver.find_elements(By.TAG_NAME, "input")
         for inp in inputs:
@@ -133,7 +122,6 @@ def _login(driver: webdriver.Chrome) -> bool:
     _try_navigate(driver, "https://www.linkedin.com/login")
     time.sleep(2)
 
-    # ---- Handle "Welcome Back" page variants ----
     welcome_patterns = [
         "Sign in using another account",
         "Sign in as someone else",
@@ -152,8 +140,6 @@ def _login(driver: webdriver.Chrome) -> bool:
         except WebDriverException:
             continue
 
-    # If password field not visible yet, try clicking "Sign in" button (another
-    # welcome-back variant where the form is hidden behind a button).
     if not _find_visible_input(driver, "current-password"):
         try:
             sign_in_btn = driver.find_elements(
@@ -166,7 +152,6 @@ def _login(driver: webdriver.Chrome) -> bool:
         except WebDriverException:
             pass
 
-    # Wait for any input to appear (gives SDUI framework time to render)
     try:
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.TAG_NAME, "input"))
@@ -176,7 +161,6 @@ def _login(driver: webdriver.Chrome) -> bool:
         _save_debug_screenshot(driver)
         return False
 
-    # ---- Find email field by scanning all visible inputs ----
     email_input = _find_visible_input(driver, "username")
     if not email_input:
         logger.error("Could not find email input on LinkedIn login page")
@@ -194,7 +178,6 @@ def _login(driver: webdriver.Chrome) -> bool:
         email_input.send_keys(char)
         time.sleep(random.uniform(0.03, 0.08))
 
-    # ---- Find password field by scanning all visible inputs ----
     password_input = _find_visible_input(driver, "current-password")
     if not password_input:
         logger.error("Could not find password input on LinkedIn login page")
@@ -212,7 +195,6 @@ def _login(driver: webdriver.Chrome) -> bool:
         password_input.send_keys(char)
         time.sleep(random.uniform(0.03, 0.08))
 
-    # Submit
     try:
         password_input.submit()
     except WebDriverException:
@@ -239,7 +221,6 @@ def _login(driver: webdriver.Chrome) -> bool:
 
 
 def _save_debug_screenshot(driver: webdriver.Chrome) -> None:
-    """Save a debug screenshot and page source for troubleshooting."""
     try:
         driver.save_screenshot("/tmp/linkedin_debug.png")
         logger.info("Saved debug screenshot to /tmp/linkedin_debug.png")
@@ -269,7 +250,6 @@ def _parse_profile_page(page_source: str) -> dict:
         for item in soup.select("section#experience span[aria-hidden='true']")
     ]
 
-    # Extract title/headline from profile page
     title = ""
     for sel in [
         "div.text-body-medium",
@@ -282,7 +262,6 @@ def _parse_profile_page(page_source: str) -> dict:
             title = elem.get_text(strip=True)
             break
 
-    # Extract location from profile page
     location = ""
     for sel in [
         "span.text-body-small",
@@ -309,6 +288,17 @@ def _sleep_between(min_seconds: float, max_seconds: float) -> None:
 
 
 def scrape_profiles(search_query: str, max_results: int = 20) -> List[dict]:
+    """Run a full LinkedIn search-and-scrape cycle using Selenium.
+
+    Args:
+        search_query: Keywords for the LinkedIn people search.
+        max_results: Maximum number of profiles to scrape (default 20, max 20).
+
+    Returns:
+        A list of profile dicts with keys ``name``, ``title``, ``company``,
+        ``location``, ``profile_url``, ``summary``, ``skills``, ``experience``,
+        ``raw_text``.
+    """
     driver = _build_driver()
     profiles: List[dict] = []
     max_results = min(max_results, 20)
@@ -323,7 +313,6 @@ def scrape_profiles(search_query: str, max_results: int = 20) -> List[dict]:
         )
         _try_navigate(driver, search_url, wait_after=4)
 
-        # Progressive scroll to load more results (more human-like)
         for _ in range(3):
             driver.execute_script("window.scrollBy(0, 600);")
             _sleep_between(1.5, 3)
@@ -337,9 +326,6 @@ def scrape_profiles(search_query: str, max_results: int = 20) -> List[dict]:
             retries += 1
             _try_navigate(driver, search_url)
 
-        # LinkedIn uses randomized CSS class names that change frequently, so we
-        # can't rely on class selectors. Instead, find all profile links by their
-        # /in/ URL pattern and deduplicate by URL.
         all_links = driver.find_elements(By.TAG_NAME, "a")
         profile_urls = []
         seen_urls = set()
@@ -373,14 +359,12 @@ def scrape_profiles(search_query: str, max_results: int = 20) -> List[dict]:
                     time.sleep(30)
                     continue
 
-                # Progressive scroll on profile page
                 for _ in range(2):
                     driver.execute_script("window.scrollBy(0, 500);")
                     _sleep_between(1, 2)
 
                 profile_details = _parse_profile_page(driver.page_source)
 
-                # Extract name from the profile page title
                 name = driver.title.replace(" | LinkedIn", "").strip() if driver.title else ""
 
                 driver.close()

@@ -1,116 +1,88 @@
 # HR Profile Matcher
 
-HR Profile Matcher is a full-stack HR SaaS platform where users authenticate, define job criteria (form or natural language), generate a structured LinkedIn search query, scrape real profiles, and match candidates using NLP embeddings. Each user's scraped profiles are private in Supabase.
+Full-stack HR SaaS platform. Authenticate with Supabase, describe your ideal candidate in plain English, scrape LinkedIn profiles, and get semantically matched results ranked by score.
 
 ## Project Structure
 
 ```
-hr_profile_matcher/
-├── backend/              # FastAPI Python backend
-│   ├── main.py           # API server
-│   ├── matcher.py        # NLP candidate matching
-│   ├── ollama_parser.py  # NL parsing + query generation (Groq/Ollama)
-│   ├── supabase_client.py
-│   ├── profile_scraper.py   # Legacy Selenium scraper
-│   ├── scraper_lib_adapter.py  # Playwright-based scraper
-│   ├── cli.py            # CLI entry point
-│   ├── scraper_lib/      # LinkedIn scraper library (pip-installable)
-│   ├── requirements.txt
-│   ├── Dockerfile
-│   └── .dockerignore
-├── frontend/             # React + Vite + Tailwind CSS
+hr_bot/
+├── backend/               # FastAPI Python backend
+│   ├── main.py            # App factory + middleware
+│   ├── config.py          # Centralized environment config
+│   ├── cli.py             # CLI entry point
+│   ├── api/               # HTTP API layer
+│   │   ├── routes.py      # Route handlers
+│   │   ├── schemas.py     # Pydantic models
+│   │   └── auth.py        # JWT auth + role guard
+│   ├── ai/                # AI / NLP modules
+│   │   ├── parser.py      # LLM parsing (Groq / Ollama)
+│   │   └── matcher.py     # Semantic matching
+│   ├── scraping/          # LinkedIn scraping
+│   │   ├── profile_scraper.py       # Legacy Selenium (deprecated)
+│   │   ├── scraper_lib_adapter.py   # Playwright-based (recommended)
+│   │   └── scraper_lib/             # Vendored linkedin_scraper library
+│   ├── db/                # Database layer
+│   │   └── client.py      # Supabase client + user management
+│   └── credentials/       # LinkedIn session data (Docker volume)
+├── frontend/              # React + Vite + Tailwind CSS
 │   ├── src/
-│   ├── public/
 │   ├── Dockerfile
-│   ├── nginx.conf        # Production nginx config
+│   ├── nginx.conf         # Production nginx config
 │   └── package.json
-├── docker-compose.yml    # Orchestrates backend + frontend
-├── .env.example
-├── mock_profiles.json    # Fallback data when DB is empty
-├── .gitignore
-└── README.md
+├── docker-compose.yml     # Orchestrates backend + frontend
+└── .env.example           # Environment variable template
 ```
 
 ## Stack
 
-- **Backend:** FastAPI (Python)
-- **Scraping:** Playwright (primary) + Selenium/BeautifulSoup (legacy)
-- **NLP Matching:** SentenceTransformers `all-MiniLM-L6-v2` + cosine similarity
-- **NL Parsing / Query Structuring:** Groq API (default) or Ollama `phi3` (local)
-- **Auth + DB:** Supabase (Auth + PostgreSQL)
-- **Frontend:** React + Tailwind CSS (Vite build)
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI (Python) |
+| Scraping | Playwright (primary), Selenium (legacy) |
+| NLP Matching | SentenceTransformers (`all-MiniLM-L6-v2`) + cosine similarity |
+| NL Parsing | Groq API (default) or Ollama `phi3` (local) |
+| Auth + DB | Supabase (Auth + PostgreSQL with RLS) |
+| Frontend | React + Tailwind CSS, Vite build, nginx |
 
-## Quick Start with Docker
-
-### Prerequisites
-- Docker & Docker Compose
-
-### Setup
-
-1. **Clone and create `.env`:**
-   ```bash
-   cp .env.example .env
-   ```
-   Fill in your Supabase credentials, LinkedIn credentials, and Groq API key.
-
-2. **Build and start:**
-   ```bash
-   docker compose up --build -d
-   ```
-
-3. **Open the app:** http://localhost
-
-### Services
-
-| Service  | Port | Description                      |
-|----------|------|----------------------------------|
-| Frontend | 80   | React SPA (nginx)                |
-| Backend  | 8000 | FastAPI + scraping + matching    |
-
-The frontend nginx server proxies `/api/` requests to the backend automatically.
-
-## Development Without Docker
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- Playwright Chromium (`playwright install chromium`)
-- Ollama running locally (optional, for LOCAL_LLM=true)
-
-### Install Dependencies
+## Quick Start (Docker)
 
 ```bash
-# Backend
-cd backend
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install -e scraper_lib/
-.venv/bin/pip install playwright
-.venv/bin/playwright install chromium
-.venv/bin/playwright install-deps chromium
-
-# Frontend
-cd frontend
-npm install
+cp .env.example .env          # Fill in your credentials
+docker compose up -d          # Starts backend + frontend
+curl http://localhost:8000/api/health   # Verify
+# → {"status": "ok"}
 ```
 
-### Run
+Then open **http://localhost** in your browser.
+
+## Manual Setup
+
+### Backend
 
 ```bash
-# Terminal 1: Backend
 cd backend
-.venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+pip install playwright && playwright install chromium
+pip install ./scraping/scraper_lib/
+python cli.py serve
+```
 
-# Terminal 2: Frontend (Vite dev server with API proxy)
+### Frontend
+
+```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-Vite dev server runs at http://localhost:5173 and proxies `/api/` to the backend.
+## Database Schema & Migrations
 
-## Supabase Setup
+The project uses **Supabase** (PostgreSQL). Run these SQL statements in your Supabase SQL editor to set up the schema:
 
-Run this SQL in Supabase SQL editor:
+### Table: `profiles`
+
+Stores user metadata synced from Supabase Auth.
 
 ```sql
 create table if not exists profiles (
@@ -119,12 +91,22 @@ create table if not exists profiles (
   role text default 'viewer',
   created_at timestamp default now()
 );
+
 alter table profiles enable row level security;
 
-create policy "Profiles read own" on profiles for select using (id = auth.uid());
-create policy "Profiles insert own" on profiles for insert with check (id = auth.uid());
-create policy "Profiles update own" on profiles for update using (id = auth.uid());
+create policy "Profiles read own" on profiles
+  for select using (id = auth.uid());
+create policy "Profiles insert own" on profiles
+  for insert with check (id = auth.uid());
+create policy "Profiles update own" on profiles
+  for update using (id = auth.uid());
+```
 
+### Table: `scraped_profiles`
+
+Stores scraped LinkedIn profiles, one row per profile. The `experience` and `education` columns store arrays of text blocks (latest schema version includes both columns).
+
+```sql
 create table if not exists scraped_profiles (
   id text primary key,
   user_id uuid references profiles(id),
@@ -136,31 +118,60 @@ create table if not exists scraped_profiles (
   summary text,
   skills text[],
   experience text[],
+  education text[],
   raw_text text,
   scraped_at timestamp default now()
 );
+
 alter table scraped_profiles enable row level security;
 
-create policy "Scraped select own" on scraped_profiles for select using (user_id = auth.uid());
-create policy "Scraped insert own" on scraped_profiles for insert with check (user_id = auth.uid());
-create policy "Scraped delete own" on scraped_profiles for delete using (user_id = auth.uid());
+create policy "Scraped select own" on scraped_profiles
+  for select using (user_id = auth.uid());
+create policy "Scraped insert own" on scraped_profiles
+  for insert with check (user_id = auth.uid());
+create policy "Scraped delete own" on scraped_profiles
+  for delete using (user_id = auth.uid());
 ```
+
+### Migration history
+
+| Date | Change |
+|---|---|
+| Initial | Create `profiles` + `scraped_profiles` tables |
+| 2024-06-03 | Add `education` column to `scraped_profiles` |
 
 ## Environment Variables
 
-See `.env.example` for all required variables. Key variables:
+See `.env.example` for the full list. Key variables:
 
-| Variable | Description |
-|----------|-------------|
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `LINKEDIN_EMAIL` | LinkedIn account email |
-| `LINKEDIN_PASSWORD` | LinkedIn account password |
-| `LOCAL_LLM` | Set to `true` to use Ollama instead of Groq |
-| `GROQ_API_KEY` | Groq API key (required unless `LOCAL_LLM=true`) |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SUPABASE_URL` | ✅ | — | Supabase project URL |
+| `SUPABASE_ANON_KEY` | ✅ | — | Supabase anonymous key |
+| `GROQ_API_KEY` | ✅ | — | Groq API key for LLM inference |
+| `LINKEDIN_EMAIL` | ✅ | — | LinkedIn account email |
+| `LINKEDIN_PASSWORD` | ✅ | — | LinkedIn account password |
+| `LOCAL_LLM` | — | `false` | Set `true` to use Ollama instead of Groq |
+| `CORS_ORIGINS` | — | `http://localhost:80` | Comma-separated allowed origins |
+
+## Services
+
+| Service | Port | Description |
+|---|---|---|
+| Frontend | 80 | React SPA (nginx) — proxies `/api/*` to backend |
+| Backend | 8000 | FastAPI + scraping + matching |
+
+## Architecture Overview
+
+```
+Job Description → ai/parser.py (LLM) → structured criteria
+  → api/routes.py (/api/scrape) → scraping/ (Playwright)
+  → db/client.py (Supabase) → ai/matcher.py (semantic)
+  → ranked results → Frontend UI
+```
 
 ## Notes
 
-- **Admins** can scrape and refresh profiles. **Viewers** can only match against existing data.
-- LinkedIn session data is persisted in a Docker volume (`linkedin_sessions`) so you don't need to re-login on each restart.
-- The backend's CORS allows requests from `localhost:5173` (Vite dev) and `localhost` (Docker nginx).
+- **Admin** role can scrape profiles; **viewer** role can only match against existing data.
+- LinkedIn session data is persisted in a Docker volume — no re-login on restart.
+- The scraper uses a two-phase approach: card extraction (fast, safe) then enrichment (with random delays to avoid rate limits).
