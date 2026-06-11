@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -50,18 +50,29 @@ export default function CriteriaPanel({
 }) {
   const [skillInput, setSkillInput] = useState("");
   const [parsing, setParsing] = useState(false);
+  const abortRef = useRef(null);
 
   const authHeaders = useMemo(() => ({ "Content-Type": "application/json" }), []);
 
   useEffect(() => {
     if (!naturalLanguage) return;
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const timeout = setTimeout(async () => {
+      // Cancel any in-flight request from a previous keystroke
+      if (abortRef.current && abortRef.current !== controller) {
+        abortRef.current.abort();
+      }
+
       setParsing(true);
       try {
         const response = await fetch(`${API_BASE}/api/parse-nl`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({ natural_language: naturalLanguage }),
+          signal: controller.signal,
         });
         if (!response.ok) return;
         const data = await response.json();
@@ -75,11 +86,18 @@ export default function CriteriaPanel({
           education_level: data.education_level ?? prev.education_level,
           sector: data.sector ?? prev.sector,
         }));
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.warn("NL parse request failed:", err);
+        }
       } finally {
         setParsing(false);
       }
     }, 800);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [naturalLanguage, onCriteriaChange]);
 
   const addSkill = (event) => {
@@ -103,16 +121,17 @@ export default function CriteriaPanel({
   };
 
   return (
-    <div className="glass rounded-2xl p-5 shadow-xl shadow-indigo-500/5">
+    <div className={`glass rounded-2xl p-5 shadow-xl shadow-indigo-500/5 ${loadingQuery ? "pointer-events-none opacity-50" : ""}`}>
       {/* Natural language input */}
       <Section title="Describe the Role" defaultOpen={!!naturalLanguage}>
         <div className="relative">
           <textarea
             rows={4}
-            className="w-full resize-none rounded-xl bg-slate-800/60 p-3.5 text-sm text-white placeholder-slate-500 transition-all focus:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            className="w-full resize-none rounded-xl bg-slate-800/60 p-3.5 text-sm text-white placeholder-slate-500 transition-all focus:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50"
             placeholder='e.g. "Looking for a senior software engineer with 5+ years of Python experience..."'
             value={naturalLanguage}
             onChange={(event) => onNaturalLanguageChange(event.target.value)}
+            disabled={loadingQuery}
           />
           {parsing && (
             <div className="absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full bg-indigo-500/15 px-2.5 py-1 text-[10px] font-medium text-indigo-300">

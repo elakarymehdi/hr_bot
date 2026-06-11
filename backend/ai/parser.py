@@ -142,6 +142,8 @@ def parse_nl_to_form(text: str) -> Dict[str, Any]:
         ``years_experience``, ``location``, ``contract_type``,
         ``education_level``, ``sector``.
     """
+    # Truncate input to avoid hitting LLM token limits
+    text = text[:2000]
     prompt = (
         "Extract structured job criteria from the text below.\n\n"
         "Return ONLY raw JSON with these exact keys (no markdown, no code fences, no explanation):\n"

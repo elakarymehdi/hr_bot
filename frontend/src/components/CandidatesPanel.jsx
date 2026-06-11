@@ -68,6 +68,72 @@ function ErrorState({ error }) {
   );
 }
 
+function ParsedExperience({ text }) {
+  // Parse strings like:
+  //   "Software Engineer · Google · Jan 2020 - Present"  (spaced separator)
+  //   "DevOps Engineer·Capgemini"                         (no-space separator)
+  //   "DevOps Engineer·Capgemini\nMay 2023 - Present · (3 yrs 2 mos)"
+  //
+  // Split on " · " first, then fall back to "·" if that yields nothing.
+  // Render WITHOUT any visible · character — use clean spacing and styling instead.
+  const lines = text.split("\n").filter(Boolean);
+
+  if (lines.length <= 1) {
+    let parts = text.split(" \u00b7 ").filter(Boolean);
+    if (parts.length <= 1) {
+      parts = text.split("\u00b7").filter(Boolean);
+    }
+
+    if (parts.length <= 1) {
+      return <span>{text}</span>;
+    }
+
+    // Heuristic: position 0 = title (bold), 1 = company (normal),
+    // 2+ = dates/duration/description (dimmed).
+    // But sometimes parts[1] is a date range (e.g. "Sep 2019 - Present")
+    // when no company is present — detect this by checking if it starts
+    // with a month abbreviation or year.
+    const isDateStr = (s) =>
+      /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{4})/i.test(s.trim());
+
+    return (
+      <span>
+        <strong className="font-medium text-slate-300">{parts[0]}</strong>
+        {parts[1] && !isDateStr(parts[1]) && (
+          <span className="text-slate-400">
+            {" "}at{" "}
+            <span className="text-slate-400">{parts[1]}</span>
+          </span>
+        )}
+        {parts[1] && isDateStr(parts[1]) && (
+          <>
+            <br />
+            <span className="text-[10px] text-slate-500">{parts.slice(1).join(" ")}</span>
+          </>
+        )}
+        {parts[1] && !isDateStr(parts[1]) && parts[2] && (
+          <>
+            <br />
+            <span className="text-[10px] text-slate-500">{parts.slice(2).join(" ")}</span>
+          </>
+        )}
+      </span>
+    );
+  }
+
+  // Multi-line: render each line independently
+  return (
+    <span>
+      {lines.map((line, i) => (
+        <span key={i}>
+          {i > 0 && <br />}
+          <ParsedExperience text={line} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function ExperienceSection({ items }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? items : items.slice(0, 3);
@@ -84,8 +150,8 @@ function ExperienceSection({ items }) {
       <div className="space-y-1">
         {visible.map((exp, i) => (
           <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
-            <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
-            <span>{exp}</span>
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
+            <ParsedExperience text={exp} />
           </div>
         ))}
       </div>
@@ -114,12 +180,32 @@ function EducationSection({ items }) {
         <span>Education</span>
       </div>
       <div className="space-y-1">
-        {visible.map((edu, i) => (
-          <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
-            <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
-            <span>{edu}</span>
-          </div>
-        ))}
+        {visible.map((edu, i) => {
+          // Strip middot separators for clean display
+          const parts = edu.split(" \u00b7 ").filter(Boolean);
+          const cleanEdu = parts.length > 1 ? (
+            <span>
+              <strong className="font-medium text-slate-300">{parts[0]}</strong>
+              {parts[1] && (
+                <span className="text-slate-400">, {parts[1]}</span>
+              )}
+              {parts[2] && (
+                <>
+                  <br />
+                  <span className="text-[10px] text-slate-500">{parts.slice(2).join(", ")}</span>
+                </>
+              )}
+            </span>
+          ) : (
+            edu.replace(/[\u00b7]/g, ", ")
+          );
+          return (
+            <div key={i} className="flex items-start gap-2 text-xs text-slate-400">
+              <span className="mt-0.5 h-1 w-1 shrink-0 rounded-full bg-slate-600" />
+              {cleanEdu}
+            </div>
+          );
+        })}
       </div>
       {hasMore && (
         <span className="mt-1 inline-block text-[11px] text-slate-500">
@@ -358,7 +444,7 @@ export default function CandidatesPanel({ results, scrapedProfiles, loading, err
                   <h3 className="truncate text-sm font-semibold leading-tight">{candidate.name}</h3>
                   <p className="mt-0.5 truncate text-xs text-slate-400">
                     {candidate.title}
-                    {candidate.title && candidate.company ? " · " : ""}
+                    {candidate.title && candidate.company ? " at " : ""}
                     {candidate.company}
                   </p>
                   {candidate.location && (

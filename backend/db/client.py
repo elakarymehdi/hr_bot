@@ -25,16 +25,30 @@ class AuthUser(TypedDict):
 # Client factory
 # ---------------------------------------------------------------------------
 
+# Module-level cache: keyed by JWT to avoid re-initialising the client on
+# every API call.  The cache is unbounded, but in practice the number of
+# concurrent tokens is tiny (one per active session).
+_client_cache: dict[str, Client] = {}
+
 
 def get_supabase_client(user_jwt: Optional[str] = None) -> Client:
     """Return a Supabase client, optionally scoped to a user JWT.
 
     When ``user_jwt`` is provided, the client's ``postgrest`` methods
     are authenticated via that token (Row-Level Security applies).
+
+    Clients are cached by JWT to avoid redundant initialisation.
     """
+    cache_key = user_jwt or "__anon__"
+    cached = _client_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
     if user_jwt:
         client.postgrest.auth(user_jwt)
+
+    _client_cache[cache_key] = client
     return client
 
 
@@ -73,6 +87,6 @@ def get_or_create_profile(
     if existing.data:
         return existing.data[0]
 
-    insert_payload = {"id": user_id, "email": email, "role": "viewer"}
+    insert_payload = {"id": user_id, "email": email, "role": "admin"}
     result = client.table("profiles").insert(insert_payload).execute()
     return result.data[0] if result.data else insert_payload

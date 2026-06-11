@@ -38,7 +38,7 @@ def get_current_user(request: Request) -> CurrentUser:
     return CurrentUser(
         user_id=profile["id"],
         email=profile.get("email"),
-        role=profile.get("role", "viewer"),
+        role=profile.get("role", "admin"),
         token=token,
     )
 

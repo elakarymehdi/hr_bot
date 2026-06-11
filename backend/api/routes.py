@@ -79,7 +79,11 @@ async def scrape(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Scrape LinkedIn profiles matching the given search query."""
-    require_admin(current_user)
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if not payload.search_query.strip():
+        raise HTTPException(status_code=400, detail="search_query cannot be empty")
 
     if payload.scraper == "legacy":
         logger.info("Using legacy Selenium-based scraper")
@@ -168,7 +172,8 @@ async def delete_profiles(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Delete all scraped profiles for the authenticated user (admin only)."""
-    require_admin(current_user)
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
     client = get_supabase_client(current_user.token)
     client.table("scraped_profiles").delete().eq("user_id", current_user.user_id).execute()
     logger.info("Cleared all scraped profiles for user %s", current_user.user_id)

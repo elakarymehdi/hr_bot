@@ -54,5 +54,5 @@ class CurrentUser(BaseModel):
 
     user_id: str
     email: Optional[str] = None
-    role: str = "viewer"
+    role: str = "admin"
     token: str

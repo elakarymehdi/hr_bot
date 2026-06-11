@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Logo from "../components/Logo.jsx";
@@ -44,7 +44,7 @@ export default function Dashboard() {
   const [totalInDb, setTotalInDb] = useState(null);
   const [showClearModal, setShowClearModal] = useState(false);
   const [showSignOutModal, setShowSignOutModal] = useState(false);
-  const initialLoadDone = useRef(false);
+  const [modalError, setModalError] = useState("");
 
   // Auth
 
@@ -97,21 +97,10 @@ export default function Dashboard() {
   // Fetch scraped profiles on load
 
   useEffect(() => {
-    if (!token || initialLoadDone.current) return;
-    initialLoadDone.current = true;
-    let cancelled = false;
-    (async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/profiles`, { headers: authHeaders });
-        if (!cancelled && response.ok) {
-          const data = await response.json();
-          setScrapedProfiles(data.profiles || []);
-          setTotalInDb(data.profiles?.length ?? null);
-        }
-      } catch {}
-    })();
-    return () => { cancelled = true; };
-    // Only run once when token becomes available
+    if (!token) return;
+    fetchScrapedProfiles();
+    // Only fetch once when token becomes available — the callback is stable
+    // enough to avoid re-fetching purely on token changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -183,6 +172,7 @@ export default function Dashboard() {
     }
 
     setError("");
+    setModalError("");
     setProfilesFound(null);
     setModalMode(searchMode);
     setLoadingQuery(true);
@@ -211,6 +201,7 @@ export default function Dashboard() {
 
   const handleConfirm = async (query) => {
     setError("");
+    setModalError("");
     try {
       if (modalMode === "scrape") {
         await runScrape(query);
@@ -225,6 +216,7 @@ export default function Dashboard() {
       setModalOpen(false);
     } catch (err) {
       setError(err.message);
+      setModalError(err.message);
     }
   };
 
@@ -432,7 +424,7 @@ export default function Dashboard() {
 
       <ConfirmQueryModal
         open={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => { setModalOpen(false); setModalError(""); }}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
         onConfirm={handleConfirm}
@@ -440,6 +432,7 @@ export default function Dashboard() {
         mode={modalMode}
         profilesFound={profilesFound}
         criteria={criteria}
+        error={modalError}
       />
 
       {/* Loading overlay */}
