@@ -30,10 +30,17 @@ def get_bearer_token(request: Request) -> str:
 def get_current_user(request: Request) -> CurrentUser:
     """FastAPI dependency: validate JWT and return the authenticated user.
 
-    Raises ``401 UNAUTHORIZED`` if the token is missing or invalid.
+    Raises ``401 UNAUTHORIZED`` if the token is missing, invalid, or expired.
     """
     token = get_bearer_token(request)
-    user = get_user_from_jwt(token)
+    try:
+        user = get_user_from_jwt(token)
+    except Exception as exc:
+        logger.warning("Auth failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired token: {exc}",
+        )
     profile = get_or_create_profile(token, user["id"], user["email"])
     return CurrentUser(
         user_id=profile["id"],

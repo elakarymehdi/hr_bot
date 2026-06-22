@@ -111,6 +111,15 @@ def _clean_profile_url(profile_url: str) -> str:
 
     We need:
         https://www.linkedin.com/in/zakaria-ait-yakoub/details/experience      (CORRECT)
+
+    IMPORTANT: The returned URL MUST end with a trailing slash, otherwise
+    urljoin("https://www.linkedin.com/in/username", "details/experience")
+    treats "username" as a file and REPLACES it, producing:
+        https://www.linkedin.com/in/details/experience  (WRONG!)
+
+    urljoin("https://www.linkedin.com/in/username/", "details/experience")
+    treats "username/" as a directory, producing:
+        https://www.linkedin.com/in/username/details/experience  (CORRECT)
     """
     parsed = urlparse(profile_url)
     path = parsed.path.rstrip("/")
@@ -123,7 +132,11 @@ def _clean_profile_url(profile_url: str) -> str:
     if len(parts) >= 4 and len(parts[-1]) == 2 and parts[-1].isalpha():
         parts = parts[:-1]
         path = "/".join(parts)
-        parsed = parsed._replace(path=path)
+
+    # Always ensure trailing slash — urljoin treats the last path segment
+    # as a file if there's no trailing slash, which drops the username.
+    path = path + "/" if not path.endswith("/") else path
+    parsed = parsed._replace(path=path)
 
     return urlunparse(parsed)
 
@@ -185,6 +198,45 @@ def _name_from_slug(slug_tokens: list[str]) -> str:
     if not slug_tokens:
         return ""
     return " ".join(token.capitalize() for token in slug_tokens)
+
+
+# ---------------------------------------------------------------------------
+# Error page detection
+# ---------------------------------------------------------------------------
+
+# LinkedIn error/"This page doesn't exist" pages are consistently ~1 060 chars
+# of boilerplate (search sidebar, footer links, language selector, etc.) with
+# no actual profile content.  Real profile sections are typically > 2 000 chars.
+_ERROR_PAGE_MAX_CHARS = 1500
+
+
+def _looks_like_error_page(text: str) -> bool:
+    """Return True if ``text`` looks like a LinkedIn error / non-existent
+    page rather than real profile content.
+
+    Real profile content on subpages (details/experience) is typically
+    > 2 000 chars.  Error pages are consistently ~1 060 chars of
+    footer/sidebar boilerplate with no actual profile data.
+    """
+    if not text:
+        return True
+    if len(text) < _ERROR_PAGE_MAX_CHARS:
+        return True
+    # If the text contains error page keywords without any evidence of
+    # actual content (dates, positions, companies), consider it an error.
+    error_indicators = [
+        "this page doesn't exist",
+        "page not found",
+        "this profile is not available",
+        "this page is not available",
+        "linkedin member",
+    ]
+    lower = text.lower()
+    for indicator in error_indicators:
+        if indicator in lower:
+            return True
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +345,67 @@ class PersonScraper(BaseScraper):
         except Exception as e:
             await self.callback.on_error(e)
             raise ScrapingError(f"Failed to scrape person profile: {e}")
+
+    # ------------------------------------------------------------------
+    # Shared helper: fetch subpage text with fallback to main profile
+    # ------------------------------------------------------------------
+
+    async def _fetch_subpage_text(self, subpage_url: str, main_url: str) -> tuple[str, bool]:
+        """Navigate to ``subpage_url`` (e.g. details/experience) and grab
+        ``<main>`` inner text.  If the subpage appears to be an error
+        page (no real content, ~1 kB boilerplate), fall back to
+        ``main_url`` and grab its text instead.
+
+        Returns ``(text, is_fallback)`` where ``is_fallback`` is True
+        when the result came from the main profile page.
+        """
+        try:
+            await self.navigate_and_wait(subpage_url)
+            await self.page.wait_for_selector("main", timeout=15000)
+            await self.wait_and_focus(2)
+            await self.scroll_page_to_half()
+            await self.scroll_page_to_bottom(pause_time=0.5, max_scrolls=3)
+
+            raw_text = await self.page.evaluate(
+                "() => document.querySelector('main') ? document.querySelector('main').innerText : ''"
+            )
+            raw_text = (raw_text or "").strip()
+
+            # Detect LinkedIn error / "This page doesn't exist" pages.
+            # Real profile content is usually > 2 000 chars; error pages
+            # are consistently ~1 060 chars of boilerplate.
+            if _looks_like_error_page(raw_text):
+                logger.debug(
+                    "Subpage looks like an error page (%d chars), falling back to main profile",
+                    len(raw_text),
+                )
+                return await self._fetch_main_profile_text(main_url)
+
+            return raw_text, False
+
+        except Exception as e:
+            logger.debug("Subpage navigation failed (%s), falling back to main profile", e)
+            return await self._fetch_main_profile_text(main_url)
+
+    async def _fetch_main_profile_text(self, main_url: str) -> tuple[str, bool]:
+        """Navigate to the main profile page and return its ``<main>`` text.
+
+        Scrolls to trigger lazy-loaded experience/education sections.
+        """
+        try:
+            await self.navigate_and_wait(main_url)
+            await self.page.wait_for_selector("main", timeout=15000)
+            await self.wait_and_focus(2)
+            await self.scroll_page_to_half()
+            await self.scroll_page_to_bottom(pause_time=0.5, max_scrolls=3)
+
+            raw_text = await self.page.evaluate(
+                "() => document.querySelector('main') ? document.querySelector('main').innerText : ''"
+            )
+            return (raw_text or "").strip(), True
+        except Exception as e:
+            logger.warning("Could not fetch main profile page: %s", e)
+            return "", False
 
     async def _get_name_and_location(self, linkedin_url: str) -> tuple[str, Optional[str], Optional[str]]:
         """Extract name, location, and headline from the profile page.
@@ -420,26 +533,24 @@ class PersonScraper(BaseScraper):
     # ------------------------------------------------------------------
 
     async def _get_experiences(self, base_url: str) -> list[Experience]:
-        """Extract experiences by sending raw page text to Groq for structured parsing."""
+        """Extract experiences by sending raw page text to Groq for structured parsing.
+
+        Navigates to ``details/experience`` subpage first. If that subpage does
+        not exist (~1 kB error page), falls back to the main profile page.
+        """
         experiences = []
 
         try:
             clean_url = _clean_profile_url(base_url)
             exp_url = urljoin(clean_url, "details/experience")
-            await self.navigate_and_wait(exp_url)
-            await self.page.wait_for_selector("main", timeout=15000)
-            await self.wait_and_focus(2)
-            await self.scroll_page_to_half()
-            await self.scroll_page_to_bottom(pause_time=0.5, max_scrolls=3)
-
-            # Grab raw text — no filtering needed, Groq will handle the noise
-            raw_text = await self.page.evaluate(
-                "() => document.querySelector('main') ? document.querySelector('main').innerText : ''"
-            )
+            raw_text, is_fallback = await self._fetch_subpage_text(exp_url, clean_url)
 
             if not raw_text or len(raw_text.strip()) < 20:
-                logger.debug("No text found on experience details page")
+                logger.debug("No text found on experience page")
                 return experiences
+
+            if is_fallback:
+                logger.debug("Using main profile page for experience extraction (subpage unavailable)")
 
             logger.debug("Sending %d chars of raw experience text to Groq", len(raw_text))
 
@@ -458,7 +569,8 @@ class PersonScraper(BaseScraper):
                     description=item.get("description") or "",
                 ))
 
-            logger.info("Groq extracted %d experience entries from %d chars", len(experiences), len(raw_text))
+            logger.info("Groq extracted %d experience entries from %d chars%s",
+                        len(experiences), len(raw_text), " (fallback)" if is_fallback else "")
 
         except ValueError as e:
             logger.error("Groq API key error for experiences: %s", e)
@@ -474,26 +586,24 @@ class PersonScraper(BaseScraper):
     # ------------------------------------------------------------------
 
     async def _get_educations(self, base_url: str) -> list[Education]:
-        """Extract educations by sending raw page text to Groq for structured parsing."""
+        """Extract educations by sending raw page text to Groq for structured parsing.
+
+        Navigates to ``details/education`` subpage first. If that subpage does
+        not exist (~1 kB error page), falls back to the main profile page.
+        """
         educations = []
 
         try:
             clean_url = _clean_profile_url(base_url)
             edu_url = urljoin(clean_url, "details/education")
-            await self.navigate_and_wait(edu_url)
-            await self.page.wait_for_selector("main", timeout=15000)
-            await self.wait_and_focus(2)
-            await self.scroll_page_to_half()
-            await self.scroll_page_to_bottom(pause_time=0.5, max_scrolls=3)
-
-            # Grab raw text
-            raw_text = await self.page.evaluate(
-                "() => document.querySelector('main') ? document.querySelector('main').innerText : ''"
-            )
+            raw_text, is_fallback = await self._fetch_subpage_text(edu_url, clean_url)
 
             if not raw_text or len(raw_text.strip()) < 20:
-                logger.debug("No text found on education details page")
+                logger.debug("No text found on education page")
                 return educations
+
+            if is_fallback:
+                logger.debug("Using main profile page for education extraction (subpage unavailable)")
 
             logger.debug("Sending %d chars of raw education text to Groq", len(raw_text))
 
@@ -510,7 +620,8 @@ class PersonScraper(BaseScraper):
                     description=item.get("description") or "",
                 ))
 
-            logger.info("Groq extracted %d education entries from %d chars", len(educations), len(raw_text))
+            logger.info("Groq extracted %d education entries from %d chars%s",
+                        len(educations), len(raw_text), " (fallback)" if is_fallback else "")
 
         except ValueError as e:
             logger.error("Groq API key error for educations: %s", e)

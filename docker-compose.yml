@@ -20,7 +20,7 @@ services:
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:80}
     volumes:
-      - linkedin_sessions:/app/credentials
+      - ./nkedin_sessions:/app/credentials
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]

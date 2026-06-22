@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 import Logo from "../components/Logo.jsx";
@@ -7,8 +7,7 @@ import ConfirmClearModal from "../components/ConfirmClearModal.jsx";
 import ConfirmSignOutModal from "../components/ConfirmSignOutModal.jsx";
 import ConfirmQueryModal from "../components/ConfirmQueryModal.jsx";
 import CriteriaPanel from "../components/CriteriaPanel.jsx";
-
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+import { apiFetch } from "../api.js";
 
 const emptyCriteria = {
   job_title: "",
@@ -68,15 +67,6 @@ export default function Dashboard() {
     return () => authListener.subscription.unsubscribe();
   }, [navigate]);
 
-  // Stable auth headers – only recomputes when the token string changes
-  const authHeaders = useMemo(() => {
-    if (!token) return {};
-    return {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    };
-  }, [token]);
-
   // Fetch user profile
 
   useEffect(() => {
@@ -84,7 +74,7 @@ export default function Dashboard() {
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/me`, { headers: authHeaders });
+        const response = await apiFetch("/api/me", { token });
         if (!cancelled && response.ok) {
           const data = await response.json();
           setRole(data.role || "viewer");
@@ -92,7 +82,7 @@ export default function Dashboard() {
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [token, authHeaders]);
+  }, [token]);
 
   // Fetch scraped profiles on load
 
@@ -109,14 +99,14 @@ export default function Dashboard() {
   const fetchScrapedProfiles = useCallback(async () => {
     if (!token) return;
     try {
-      const response = await fetch(`${API_BASE}/api/profiles`, { headers: authHeaders });
+      const response = await apiFetch("/api/profiles", { token });
       if (response.ok) {
         const data = await response.json();
         setScrapedProfiles(data.profiles || []);
         setTotalInDb(data.profiles?.length ?? null);
       }
     } catch {}
-  }, [token, authHeaders]);
+  }, [token]);
 
   // Actions
 
@@ -129,10 +119,10 @@ export default function Dashboard() {
         typeof maxResults === "number" && maxResults >= 1
           ? Math.round(Math.min(maxResults, 20))
           : 20;
-      const response = await fetch(`${API_BASE}/api/scrape`, {
+      const response = await apiFetch("/api/scrape", {
+        token,
         method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({ search_query: query, max_results: safeMax }),
+        body: { search_query: query, max_results: safeMax },
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Scrape failed");
@@ -146,14 +136,14 @@ export default function Dashboard() {
   const runMatch = async () => {
     setMatching(true);
     try {
-      const response = await fetch(`${API_BASE}/api/match`, {
+      const response = await apiFetch("/api/match", {
+        token,
         method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
+        body: {
           ...criteria,
           raw_description: naturalLanguage,
           min_score: criteria.min_score,
-        }),
+        },
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Match failed");
@@ -177,13 +167,13 @@ export default function Dashboard() {
     setModalMode(searchMode);
     setLoadingQuery(true);
     try {
-      const response = await fetch(`${API_BASE}/api/structure-query`, {
+      const response = await apiFetch("/api/structure-query", {
+        token,
         method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
+        body: {
           ...criteria,
           raw_description: naturalLanguage,
-        }),
+        },
       });
       if (!response.ok) {
         const data = await response.json();
@@ -206,6 +196,7 @@ export default function Dashboard() {
       if (modalMode === "scrape") {
         await runScrape(query);
         await fetchScrapedProfiles();
+        setResults([]); // Clear stale match results so old matches don't linger
         setViewMode("scraped");
       } else {
         await runScrape(query);
@@ -222,9 +213,9 @@ export default function Dashboard() {
 
   const handleClearProfiles = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/profiles`, {
+      const response = await apiFetch("/api/profiles", {
+        token,
         method: "DELETE",
-        headers: authHeaders,
       });
       if (!response.ok) {
         const data = await response.json();
