@@ -34,3 +34,4 @@ credentials/linkedin_cookies.json
 
 # Docker
 backend/.eggs/
+nkedin_sessions/*
